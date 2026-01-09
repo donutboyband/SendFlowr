@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # ClickHouse for event storage
   clickhouse:
-    image: clickhouse/clickhouse-server:23-alpine
+    image: clickhouse/clickhouse-server:latest
     container_name: sendflowr-clickhouse
     ports:
       - "8123:8123"
@@ -19,6 +19,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   # Redis for feature store and caching
   redis:

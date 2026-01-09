@@ -9,9 +9,12 @@ until curl -s http://localhost:8123/ping > /dev/null; do
 done
 echo "ClickHouse is ready!"
 
-# Initialize ClickHouse schema
-echo "Creating ClickHouse schema..."
-cat schemas/clickhouse-schema.sql | curl -X POST 'http://localhost:8123/?user=sendflowr&password=sendflowr_dev' --data-binary @-
+# Initialize ClickHouse - one statement at a time
+echo "Creating ClickHouse database..."
+echo "CREATE DATABASE IF NOT EXISTS sendflowr" | curl -X POST 'http://localhost:8123/?user=sendflowr&password=sendflowr_dev' --data-binary @-
+
+echo "Creating ClickHouse table..."
+cat schemas/clickhouse-table.sql | curl -X POST 'http://localhost:8123/?user=sendflowr&password=sendflowr_dev' --data-binary @-
 
 # Wait for Postgres
 echo "Waiting for Postgres..."
@@ -38,4 +41,5 @@ docker exec sendflowr-kafka kafka-topics --create --if-not-exists \
     --partitions 1 \
     --replication-factor 1
 
-echo "Database initialization complete!"
+echo ""
+echo "✅ Database initialization complete!"

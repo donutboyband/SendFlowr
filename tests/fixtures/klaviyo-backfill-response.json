@@ -1,0 +1,69 @@
+{
+  "data": [
+    {
+      "type": "event",
+      "id": "evt_001",
+      "attributes": {
+        "datetime": "2026-01-08T10:15:00Z",
+        "metric": {
+          "data": {
+            "attributes": {
+              "name": "Sent Email"
+            }
+          }
+        },
+        "profile": {
+          "data": {
+            "id": "user_001",
+            "attributes": {
+              "email": "alice@example.com"
+            }
+          }
+        },
+        "campaign": {
+          "data": {
+            "id": "camp_welcome",
+            "attributes": {
+              "name": "Welcome Series"
+            }
+          }
+        },
+        "message_id": "msg_001",
+        "subject": "Welcome to SendFlowr!"
+      }
+    },
+    {
+      "type": "event",
+      "id": "evt_002",
+      "attributes": {
+        "datetime": "2026-01-08T10:20:30Z",
+        "metric": {
+          "data": {
+            "attributes": {
+              "name": "Opened Email"
+            }
+          }
+        },
+        "profile": {
+          "data": {
+            "id": "user_001",
+            "attributes": {
+              "email": "alice@example.com"
+            }
+          }
+        },
+        "campaign": {
+          "data": {
+            "id": "camp_welcome",
+            "attributes": {
+              "name": "Welcome Series"
+            }
+          }
+        },
+        "message_id": "msg_001",
+        "subject": "Welcome to SendFlowr!",
+        "ip_address": "192.168.1.50"
+      }
+    }
+  ]
+}
