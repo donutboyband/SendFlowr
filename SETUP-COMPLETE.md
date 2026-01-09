@@ -8,7 +8,8 @@ SendFlowr/
 ├── src/
 │   └── SendFlowr.Connectors/     # C# connector service
 ├── schemas/                       # Database schemas
-├── scripts/                       # Initialization scripts
+├── scripts/                       # Initialization scripts  
+├── tests/fixtures/                # Mock Klaviyo event data
 ├── docs/                         # Documentation
 └── docker-compose.yml            # Local dev environment
 ```
@@ -19,6 +20,7 @@ SendFlowr/
 - ✅ **Webhook Handler**: Real-time event ingestion with signature validation
 - ✅ **Event Publisher**: Kafka integration for event streaming
 - ✅ **Canonical Event Model**: Normalized schema across all ESPs
+- ✅ **Mock Data Generator**: Generate realistic test data without Klaviyo account
 
 ### 3. Infrastructure (Docker Compose)
 - ✅ ClickHouse for event storage
@@ -32,15 +34,19 @@ SendFlowr/
 
 ### 5. API Endpoints
 
-#### OAuth
+#### OAuth (for real Klaviyo integration)
 - `GET /api/connector/oauth/authorize` - Start OAuth flow
 - `GET /api/connector/oauth/callback` - OAuth callback handler
 
-#### Backfill
+#### Backfill (for real Klaviyo integration)
 - `POST /api/connector/backfill?days=90` - Backfill historical events
 
-#### Webhooks
+#### Webhooks (for real Klaviyo integration)
 - `POST /api/webhook/klaviyo` - Handle Klaviyo webhooks
+
+#### Mock Data (for testing without Klaviyo)
+- `POST /api/mock/events/generate?count=N` - Generate N random events
+- `POST /api/mock/events/pattern?userId=X` - Generate realistic email journey
 
 ## Quick Start
 
@@ -48,20 +54,44 @@ SendFlowr/
 # 1. Start infrastructure
 docker-compose up -d
 
-# 2. Initialize databases
-./scripts/init-databases.sh
-
-# 3. Run connector service
+# 2. Run connector service
 cd src/SendFlowr.Connectors
 dotnet run
+# Service runs on http://localhost:5215
 
-# 4. Access Swagger UI
-open http://localhost:5000/swagger
+# 3. Generate mock data
+curl -X POST "http://localhost:5215/api/mock/events/generate?count=100"
+
+# 4. Verify in Kafka
+docker exec -it sendflowr-kafka kafka-console-consumer \
+  --bootstrap-server localhost:9092 \
+  --topic email-events \
+  --from-beginning \
+  --max-messages 5
 ```
 
-## Configuration Needed
+## Testing with Mock Data
 
-Before running, update `src/SendFlowr.Connectors/appsettings.Development.json`:
+Since you don't have a Klaviyo account yet, use the mock endpoints:
+
+```bash
+# Generate 100 random events
+curl -X POST "http://localhost:5215/api/mock/events/generate?count=100"
+
+# Generate realistic email journeys
+curl -X POST "http://localhost:5215/api/mock/events/pattern?userId=user_001"
+curl -X POST "http://localhost:5215/api/mock/events/pattern?userId=user_002"
+curl -X POST "http://localhost:5215/api/mock/events/pattern?userId=user_003"
+
+# View Swagger UI
+open http://localhost:5215/swagger
+```
+
+See `docs/MOCK-DATA.md` for complete mock data guide.
+
+## Configuration
+
+Update `src/SendFlowr.Connectors/appsettings.Development.json` when you get Klaviyo credentials:
 
 ```json
 {
@@ -80,7 +110,7 @@ Before running, update `src/SendFlowr.Connectors/appsettings.Development.json`:
 1. **Event Consumer**: Read from Kafka → Write to ClickHouse + S3
 2. **Backfill Job**: Automated pagination and cursor management
 3. **OAuth Token Storage**: Encrypt and store in Postgres
-4. **Webhook Registration**: Auto-register webhooks with Klaviyo
+4. **Database Init Fix**: Resolve Postgres timeout in init script
 
 ### Week 4-5
 - Feature store computation (hourly histograms)
@@ -91,19 +121,22 @@ Before running, update `src/SendFlowr.Connectors/appsettings.Development.json`:
 - Campaign scheduler
 - React dashboard MVP
 
-## Testing the Setup
+## Verification
 
 ```bash
-# Check Kafka topics
-docker exec -it sendflowr-kafka kafka-topics --list --bootstrap-server localhost:9092
+# Check all services are running
+docker-compose ps
 
-# Monitor Kafka events
+# Check Kafka topics
+docker exec sendflowr-kafka kafka-topics --list --bootstrap-server localhost:9092
+
+# Monitor events in real-time
 docker exec -it sendflowr-kafka kafka-console-consumer \
   --bootstrap-server localhost:9092 \
   --topic email-events \
   --from-beginning
 
-# Query ClickHouse
+# Check ClickHouse (after consumer is built)
 curl 'http://localhost:8123/?user=sendflowr&password=sendflowr_dev' \
   -d 'SELECT count() FROM sendflowr.email_events'
 ```
@@ -111,25 +144,39 @@ curl 'http://localhost:8123/?user=sendflowr&password=sendflowr_dev' \
 ## Architecture Overview
 
 ```
-Klaviyo → OAuth → Connector Service → Kafka → [Consumer TBD] → ClickHouse
-                        ↓                                           ↓
-                  Postgres (metadata)                       S3 (backup)
-                                                                    ↓
-                                                          Feature Store (Redis)
-                                                                    ↓
-                                                          Inference API (Python)
+Mock API or Klaviyo → Connector Service → Kafka → [Consumer TBD] → ClickHouse
+                              ↓                                           ↓
+                      Postgres (metadata)                         S3 (backup)
+                                                                          ↓
+                                                            Feature Store (Redis)
+                                                                          ↓
+                                                           Inference API (Python)
 ```
 
 ## Build Status
-- ✅ Connector builds successfully (4 nullable warnings, no errors)
-- ✅ All services defined in docker-compose
-- ✅ Database schemas created
-- ✅ API structure complete
+- ✅ Connector builds successfully
+- ✅ All services running in Docker
+- ✅ Kafka receiving events
+- ✅ Mock data generator working
+- ⚠️ Database init script has Postgres timeout (non-blocking)
+
+## Files and Docs
+- `README.md` - Project overview
+- `SETUP-COMPLETE.md` - This file
+- `docs/DEVELOPMENT.md` - Development workflow
+- `docs/MOCK-DATA.md` - Mock data testing guide
+- `tests/fixtures/` - Sample Klaviyo event payloads
 
 ## Next Session Recommendations
 
-1. Start infrastructure: `docker-compose up -d`
-2. Initialize DBs: `./scripts/init-databases.sh`
-3. Implement the **Event Consumer** service to complete the ingestion pipeline
-4. Add unit tests for Klaviyo connector
-5. Create S3 backup integration
+1. **Test the mock data flow**:
+   ```bash
+   docker-compose up -d
+   cd src/SendFlowr.Connectors && dotnet run
+   curl -X POST "http://localhost:5215/api/mock/events/generate?count=50"
+   ```
+
+2. **Implement Event Consumer** to complete the ingestion pipeline (Kafka → ClickHouse)
+3. Add unit tests for event parsing
+4. Create S3 backup integration
+5. Fix Postgres timeout in init script (optional, non-blocking)
