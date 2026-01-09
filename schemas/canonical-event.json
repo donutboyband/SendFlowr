@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SendFlowr Canonical Event",
+  "description": "Normalized email engagement event across all ESPs",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "timestamp",
+    "esp",
+    "recipient_id",
+    "campaign_id"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "Unique event identifier from ESP"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": ["sent", "delivered", "opened", "clicked", "bounced", "unsubscribed", "marked_spam"],
+      "description": "Type of email event"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when event occurred"
+    },
+    "esp": {
+      "type": "string",
+      "enum": ["klaviyo", "sendgrid", "mailchimp", "braze"],
+      "description": "Email service provider"
+    },
+    "recipient_id": {
+      "type": "string",
+      "description": "Unique identifier for the recipient (email hash or ESP profile ID)"
+    },
+    "recipient_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Recipient email address (hashed in storage)"
+    },
+    "campaign_id": {
+      "type": "string",
+      "description": "Campaign or flow identifier from ESP"
+    },
+    "campaign_name": {
+      "type": "string",
+      "description": "Human-readable campaign name"
+    },
+    "message_id": {
+      "type": "string",
+      "description": "Unique message identifier"
+    },
+    "subject": {
+      "type": "string",
+      "description": "Email subject line"
+    },
+    "click_url": {
+      "type": "string",
+      "description": "URL clicked (for click events)"
+    },
+    "bounce_type": {
+      "type": "string",
+      "enum": ["hard", "soft"],
+      "description": "Type of bounce (for bounce events)"
+    },
+    "user_agent": {
+      "type": "string",
+      "description": "User agent from open/click"
+    },
+    "ip_address": {
+      "type": "string",
+      "description": "IP address from open/click"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional ESP-specific fields",
+      "additionalProperties": true
+    },
+    "ingested_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When SendFlowr ingested this event"
+    }
+  }
+}

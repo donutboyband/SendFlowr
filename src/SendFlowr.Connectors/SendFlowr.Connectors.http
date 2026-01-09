@@ -1,0 +1,6 @@
+@SendFlowr.Connectors_HostAddress = http://localhost:5215
+
+GET {{SendFlowr.Connectors_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
