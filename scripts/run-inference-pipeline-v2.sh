@@ -4,6 +4,10 @@ echo "🌸 SendFlowr v2.0 Inference Pipeline Test"
 echo "=========================================="
 echo ""
 
+# Get script directory and project root
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+
 API_PORT=8001
 
 # Check if v2 inference API is running
@@ -11,13 +15,19 @@ if ! curl -s http://localhost:${API_PORT}/health > /dev/null 2>&1; then
     echo "⚠️  v2.0 Inference API is not running on port ${API_PORT}!"
     echo ""
     echo "Starting v2.0 Inference API..."
-    cd src/SendFlowr.Inference
+    cd "${PROJECT_ROOT}/src/SendFlowr.Inference"
+    
+    if [ ! -d "venv" ]; then
+        echo "Creating virtual environment..."
+        python3 -m venv venv
+    fi
+    
     source venv/bin/activate
     python -m uvicorn main_v2:app --reload --port ${API_PORT} > /dev/null 2>&1 &
     API_PID=$!
     echo "Started with PID: $API_PID"
     sleep 8
-    cd ../..
+    cd "${PROJECT_ROOT}"
 fi
 
 echo "✅ v2.0 Inference API is running at http://localhost:${API_PORT}"

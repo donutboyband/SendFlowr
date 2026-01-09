@@ -4,6 +4,12 @@ echo "🌸 SendFlowr v2.0 - Complete Setup & Test"
 echo "=========================================="
 echo ""
 
+# Get script directory and project root
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+
+cd "${PROJECT_ROOT}"
+
 # Step 1: Check Docker
 echo "1️⃣  Checking Docker services..."
 if ! docker info > /dev/null 2>&1; then
