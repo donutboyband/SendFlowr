@@ -170,8 +170,8 @@ class SyntheticDataGenerator:
         """Generate realistic event sequence: sent → delivered → opened → clicked"""
         config = user['config']
         
-        # Sent event (always happens)
-        yield {
+        # Base event template
+        base_event = {
             'event_id': str(uuid.uuid4()),
             'event_type': 'sent',
             'timestamp': send_time.isoformat(),
@@ -189,15 +189,19 @@ class SyntheticDataGenerator:
             'ingested_at': datetime.utcnow().isoformat()
         }
         
+        # Sent event (always happens)
+        yield base_event
+        
         # Delivered (99% of time, 1-30 seconds later)
         if random.random() < 0.99:
             delivered_time = send_time + timedelta(seconds=random.randint(1, 30))
-            yield {
-                **_, 
+            delivered_event = base_event.copy()
+            delivered_event.update({
                 'event_id': str(uuid.uuid4()),
                 'event_type': 'delivered',
                 'timestamp': delivered_time.isoformat()
-            }
+            })
+            yield delivered_event
             
             # Opened (based on open_rate and time affinity)
             should_open, time_affinity = self._should_engage_at_time(user, send_time)
@@ -207,14 +211,15 @@ class SyntheticDataGenerator:
                 open_delay_minutes = min(open_delay_minutes, 2880)  # max 48 hours
                 open_time = delivered_time + timedelta(minutes=open_delay_minutes)
                 
-                yield {
-                    **_, 
+                opened_event = base_event.copy()
+                opened_event.update({
                     'event_id': str(uuid.uuid4()),
                     'event_type': 'opened',
                     'timestamp': open_time.isoformat(),
                     'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)',
                     'ip_address': f"192.168.{random.randint(1,254)}.{random.randint(1,254)}"
-                }
+                })
+                yield opened_event
                 
                 # Clicked (based on click_rate, conditional on open)
                 if random.random() < (config['click_rate'] / config['open_rate']):
@@ -222,13 +227,14 @@ class SyntheticDataGenerator:
                     click_delay = random.randint(1, 60)
                     click_time = open_time + timedelta(minutes=click_delay)
                     
-                    yield {
-                        **_, 
+                    clicked_event = base_event.copy()
+                    clicked_event.update({
                         'event_id': str(uuid.uuid4()),
                         'event_type': 'clicked',
                         'timestamp': click_time.isoformat(),
                         'click_url': f"https://example.com/{campaign['id']}/product-{random.randint(1,100)}"
-                    }
+                    })
+                    yield clicked_event
     
     def generate_historical_data(self, publish_to_kafka=True):
         """Generate 3 months of historical data"""
