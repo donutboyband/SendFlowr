@@ -1,12 +1,12 @@
 #!/bin/bash
 
-echo "🌸 SendFlowr - Quick Prediction (v2.0 Timing Layer)"
-echo "===================================================="
+echo "🌸 SendFlowr - Quick Timing Decision"
+echo "====================================="
 echo ""
 
 # Check if user ID provided
 if [ -z "$1" ]; then
-    echo "Usage: ./scripts/quick-predict.sh <recipient_id> [latency_seconds]"
+    echo "Usage: ./scripts/quick-predict.sh <recipient_id> [latency_seconds] [port]"
     echo ""
     echo "Example:"
     echo "  ./scripts/quick-predict.sh user_003"
@@ -21,7 +21,7 @@ fi
 
 RECIPIENT_ID=$1
 LATENCY_SECONDS=${2:-300}
-API_PORT=${3:-8001}  # Default to v2 API
+API_PORT=${3:-8001}
 
 echo "🎯 Generating timing decision for: ${RECIPIENT_ID}"
 echo "⏰ Latency estimate: ${LATENCY_SECONDS} seconds"
@@ -47,10 +47,10 @@ from datetime import datetime
 
 d = json.load(sys.stdin)
 
-print('📊 TIMING DECISION (v2.0)')
+print('📊 TIMING DECISION ')
 print('=' * 60)
 print(f'Decision ID: {d[\"decision_id\"]}')
-print(f'Recipient: {d[\"universal_user_id\"]}')
+print(f'Recipient: {d[\"universal_id\"]}')
 print(f'Model: {d[\"model_version\"]}')
 print()
 

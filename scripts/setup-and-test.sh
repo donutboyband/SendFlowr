@@ -1,7 +1,7 @@
 #!/bin/bash
 
-echo "🌸 SendFlowr v2.0 - Complete Setup & Test"
-echo "=========================================="
+echo "🌸 SendFlowr - Complete Setup & Test"
+echo "====================================="
 echo ""
 
 # Get script directory and project root
@@ -81,31 +81,31 @@ echo "  ✅ Python environment ready"
 echo ""
 cd ../..
 
-# Step 4: Start v1.0 API (backwards compat)
-echo "4️⃣  Starting v1.0 API (port 8000)..."
+# Step 4: Start Connector API
+echo "4️⃣  Starting Connector API (port 8000)..."
 if ! curl -s http://localhost:8000/health > /dev/null 2>&1; then
     cd src/SendFlowr.Connectors
     dotnet run > /dev/null 2>&1 &
-    V1_PID=$!
-    echo "  Started v1.0 Connector API (PID: $V1_PID)"
+    CONNECTOR_PID=$!
+    echo "  Started Connector API (PID: $CONNECTOR_PID)"
     cd ../..
     sleep 3
 else
-    echo "  ✅ v1.0 API already running"
+    echo "  ✅ Connector API already running"
 fi
 
-# Step 5: Start v2.0 API
-echo "5️⃣  Starting v2.0 Timing Layer API (port 8001)..."
+# Step 5: Start Timing Layer API
+echo "5️⃣  Starting Timing Layer API (port 8001)..."
 if ! curl -s http://localhost:8001/health > /dev/null 2>&1; then
     cd src/SendFlowr.Inference
     source venv/bin/activate
-    python -m uvicorn main_v2:app --reload --port 8001 > /dev/null 2>&1 &
-    V2_PID=$!
-    echo "  Started v2.0 Timing API (PID: $V2_PID)"
+    python -m uvicorn main:app --reload --port 8001 > /dev/null 2>&1 &
+    TIMING_PID=$!
+    echo "  Started Timing API (PID: $TIMING_PID)"
     cd ../..
     sleep 5
 else
-    echo "  ✅ v2.0 API already running"
+    echo "  ✅ Timing API already running"
 fi
 
 # Step 6: Start Event Consumer
@@ -127,48 +127,49 @@ echo ""
 # Step 7: Health checks
 echo "7️⃣  Running health checks..."
 
-# v1.0 API
-V1_HEALTH=$(curl -s http://localhost:8000/swagger/index.html 2>&1)
-if echo "$V1_HEALTH" | grep -q "html"; then
-    echo "  ✅ v1.0 API: http://localhost:8000"
+# Connector API
+CONNECTOR_HEALTH=$(curl -s http://localhost:8000/swagger/index.html 2>&1)
+if echo "$CONNECTOR_HEALTH" | grep -q "html"; then
+    echo "  ✅ Connector API: http://localhost:8000"
 else
-    echo "  ⚠️  v1.0 API: Not responding"
+    echo "  ⚠️  Connector API: Not responding"
 fi
 
-# v2.0 API
-V2_HEALTH=$(curl -s http://localhost:8001/health)
-if echo "$V2_HEALTH" | grep -q "healthy"; then
-    echo "  ✅ v2.0 API: http://localhost:8001"
+# Timing API
+TIMING_HEALTH=$(curl -s http://localhost:8001/health)
+if echo "$TIMING_HEALTH" | grep -q "healthy"; then
+    echo "  ✅ Timing API: http://localhost:8001"
 else
-    echo "  ⚠️  v2.0 API: Not responding"
+    echo "  ⚠️  Timing API: Not responding"
 fi
 
 echo ""
 
 # Step 8: Run tests
-echo "8️⃣  Running v2.0 pipeline test..."
+echo "8️⃣  Running pipeline test..."
 echo ""
-./scripts/run-inference-pipeline-v2.sh
+./scripts/run-inference-pipeline.sh
 
 echo ""
-echo "✅ SendFlowr v2.0 Setup Complete!"
+echo "✅ SendFlowr Setup Complete!"
 echo ""
 echo "📊 Services Running:"
 echo "  • ClickHouse: http://localhost:8123"
 echo "  • Redis: localhost:6379"
 echo "  • Kafka: localhost:9092"
-echo "  • v1.0 Connector API: http://localhost:8000"
-echo "  • v2.0 Timing Layer API: http://localhost:8001"
+echo "  • Connector API: http://localhost:8000"
+echo "  • Timing Layer API: http://localhost:8001"
 echo "  • Event Consumer: Running in background"
 echo ""
 echo "🎯 Quick Tests:"
 echo "  • Generate events: ./scripts/generate-test-events.sh"
-echo "  • v1.0 prediction: ./scripts/quick-predict.sh user_003 24 8000"
-echo "  • v2.0 decision: ./scripts/quick-predict.sh user_003 300 8001"
-echo "  • Full v2 test: ./scripts/run-inference-pipeline-v2.sh"
+echo "  • Timing decision: ./scripts/quick-predict.sh user_003 300 8001"
+echo "  • Full pipeline: ./scripts/run-inference-pipeline.sh"
 echo ""
 echo "📖 Documentation:"
-echo "  • Migration Guide: docs/MIGRATION-V2.md"
+echo "  • Architecture: docs/MIGRATION.md"
+echo "  • Testing: docs/TESTING.md"
+echo "  • Synthetic Data: docs/SYNTHETIC-DATA.md"
 echo "  • Architecture Spec: LLM-Ref/LLM-spec.md"
 echo "  • API Docs: http://localhost:8001/docs"
 echo ""

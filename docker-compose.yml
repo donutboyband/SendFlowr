@@ -82,6 +82,72 @@ services:
       timeout: 5s
       retries: 5
 
+  # SendFlowr Inference Service (Python)
+  inference:
+    build:
+      context: .
+      dockerfile: src/SendFlowr.Inference/Dockerfile
+    container_name: sendflowr-inference
+    ports:
+      - "8001:8001"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=9000
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=sendflowr
+      - POSTGRES_USER=sendflowr
+      - POSTGRES_PASSWORD=sendflowr_dev
+    depends_on:
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # SendFlowr Connector Service (.NET)
+  connector:
+    build:
+      context: .
+      dockerfile: src/SendFlowr.Connectors/Dockerfile
+    container_name: sendflowr-connector
+    ports:
+      - "5215:5215"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Kafka__BootstrapServers=kafka:29092
+      - InferenceService__Url=http://inference:8001
+    depends_on:
+      kafka:
+        condition: service_healthy
+      inference:
+        condition: service_started
+    restart: unless-stopped
+
+  # SendFlowr Consumer Service (.NET)
+  consumer:
+    build:
+      context: .
+      dockerfile: src/SendFlowr.Consumer/Dockerfile
+    container_name: sendflowr-consumer
+    environment:
+      - Kafka__BootstrapServers=kafka:29092
+      - ClickHouse__Host=clickhouse
+      - ClickHouse__Port=8123
+      - ClickHouse__Database=sendflowr
+      - ClickHouse__User=sendflowr
+      - ClickHouse__Password=sendflowr_dev
+    depends_on:
+      kafka:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   clickhouse-data:
   redis-data:

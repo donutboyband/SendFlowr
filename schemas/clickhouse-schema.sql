@@ -1,13 +1,13 @@
-CREATE DATABASE IF NOT EXISTS sendflowr
+CREATE DATABASE IF NOT EXISTS sendflowr;
 
-CREATE TABLE IF NOT EXISTS email_events
+CREATE TABLE IF NOT EXISTS sendflowr.email_events
 (
     event_id String,
     event_type LowCardinality(String),
     timestamp DateTime64(3, 'UTC'),
     esp LowCardinality(String),
-    recipient_id String,
-    recipient_email String,
+    universal_id String,                  -- Resolved Universal SendFlowr ID (PRIMARY)
+    recipient_email_hash String,          -- SHA-256 hash of email (privacy-first)
     campaign_id String,
     campaign_name String,
     message_id String,
@@ -21,20 +21,23 @@ CREATE TABLE IF NOT EXISTS email_events
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(timestamp)
-ORDER BY (esp, recipient_id, timestamp, event_type)
-PRIMARY KEY (esp, recipient_id, timestamp)
+ORDER BY (esp, universal_id, timestamp, event_type)  -- Ordered by universal_id
+PRIMARY KEY (esp, universal_id, timestamp)
 SETTINGS index_granularity = 8192;
 
 -- Dedupe view
-CREATE MATERIALIZED VIEW IF NOT EXISTS email_events_deduped
+CREATE MATERIALIZED VIEW IF NOT EXISTS sendflowr.email_events_deduped
 ENGINE = ReplacingMergeTree()
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (esp, event_id, campaign_id)
 AS SELECT *
-FROM email_events;
+FROM sendflowr.email_events;
 
--- Index for fast lookups by recipient
-CREATE INDEX IF NOT EXISTS idx_recipient ON email_events (recipient_id) TYPE bloom_filter GRANULARITY 1;
+-- Index for fast lookups by universal_id
+CREATE INDEX IF NOT EXISTS idx_universal_id ON sendflowr.email_events (universal_id) TYPE bloom_filter GRANULARITY 1;
 
 -- Index for campaign lookups
-CREATE INDEX IF NOT EXISTS idx_campaign ON email_events (campaign_id) TYPE bloom_filter GRANULARITY 1;
+CREATE INDEX IF NOT EXISTS idx_campaign ON sendflowr.email_events (campaign_id) TYPE bloom_filter GRANULARITY 1;
+
+-- Index for campaign lookups
+CREATE INDEX IF NOT EXISTS idx_campaign ON sendflowr.email_events (campaign_id) TYPE bloom_filter GRANULARITY 1;

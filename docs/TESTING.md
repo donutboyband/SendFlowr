@@ -1,156 +1,221 @@
-# Test Scripts
+# SendFlowr - Complete Test Suite
 
-## Quick Test Event Generation
+This directory contains all test scripts for SendFlowr Timing Layer.
 
-### Generate All Test Events
+## Quick Start
+
+### Complete Setup & Test
+```bash
+./scripts/setup-and-test.sh
+```
+
+This script:
+1. ✅ Checks Docker services
+2. ✅ Verifies databases (ClickHouse, Redis, Kafka)
+3. ✅ Sets up Python environment
+4. ✅ Starts Connector API
+5. ✅ Starts Timing Layer API
+6. ✅ Starts Event Consumer
+7. ✅ Runs health checks
+8. ✅ Executes full pipeline test
+
+## Individual Test Scripts
+
+### 1. Database Initialization
+```bash
+./scripts/init-databases.sh
+```
+- Creates ClickHouse schema
+- Creates Postgres tables
+- Creates Kafka topics
+
+### 2. Generate Test Events
 ```bash
 ./scripts/generate-test-events.sh
 ```
+- Generates ~125 mock events
+- Creates realistic user journeys
+- Publishes to Kafka
 
-This generates:
-- 100 random events (mixed types and users)
-- 5 realistic user journeys (sent → delivered → opened → clicked)
-- 12 events for a "heavy user" across multiple campaigns
-- 5 low-engagement events
-- 10 time-varied events
+### 3. Quick Prediction/Decision
 
-**Total: ~125 events**
-
-### Run Comprehensive Test Suite
+**Timing Decision** (Minute-Level with Latency):
 ```bash
-./scripts/run-tests.sh
+./scripts/quick-predict.sh user_003 300 8001
+#                                    ^^^latency seconds
+#                                        ^^^^ port
 ```
 
-This runs 5 test scenarios:
-1. Single realistic user journey
-2. Random events (10)
-3. Cohort simulation (3 users)
-4. Bulk load (50 events)
-5. Kafka verification
+### 4. Full Pipeline Test
 
-**Total: ~73 events**
-
-## Individual Test Commands
-
-### Generate Random Events
+**Inference Pipeline**:
 ```bash
-# 10 events
-curl -X POST "http://localhost:5215/api/mock/events/generate?count=10"
+./scripts/run-inference-pipeline.sh
+```
+- Computes minute-level features
+- Generates timing decisions for 5 users
+- Shows detailed decision analysis
+- Displays feature metadata
 
-# 100 events
-curl -X POST "http://localhost:5215/api/mock/events/generate?count=100"
+## Test Data
+
+### Available Test Users
+- `user_001` through `user_005` - Regular users
+- `user_heavy` - High engagement
+- `user_low_engage` - Low engagement
+- `cohort_user_a/b/c` - Test cohort
+
+### Event Types Generated
+- `sent` - Email sent
+- `delivered` - Email delivered
+- `opened` - Email opened (weak signal due to MPP)
+- `clicked` - Email clicked (**primary signal**)
+
+## Verification
+
+### Check ClickHouse Events
+```bash
+curl 'http://localhost:8123/?user=sendflowr&password=sendflowr_dev' \
+  -d 'SELECT count() FROM sendflowr.email_events'
 ```
 
-### Generate Realistic Journey
+### Check Redis Features
 ```bash
-# Single user journey (sent → delivered → opened → clicked)
-curl -X POST "http://localhost:5215/api/mock/events/pattern?userId=user_001"
-
-# Multiple users
-for i in {1..5}; do
-  curl -X POST "http://localhost:5215/api/mock/events/pattern?userId=user_00${i}"
-done
+docker exec sendflowr-redis redis-cli --scan --pattern "features:v2:*"
 ```
 
-## Verify Events
-
-### Check Kafka
+### Check Kafka Topics
 ```bash
-# View latest events
+docker exec sendflowr-kafka kafka-topics \
+  --list --bootstrap-server localhost:9092
+```
+
+### Monitor Kafka Events
+```bash
 docker exec -it sendflowr-kafka kafka-console-consumer \
   --bootstrap-server localhost:9092 \
   --topic email-events \
-  --from-beginning \
-  --max-messages 10
-
-# Monitor in real-time
-docker exec -it sendflowr-kafka kafka-console-consumer \
-  --bootstrap-server localhost:9092 \
-  --topic email-events
+  --max-messages 5
 ```
 
-### Check Event Counts
+## API Testing
+
+### Connector API (port 8000)
 ```bash
-# Count messages in Kafka topic
-docker exec sendflowr-kafka kafka-run-class kafka.tools.GetOffsetShell \
-  --broker-list localhost:9092 \
-  --topic email-events \
-  --time -1 | awk -F ":" '{sum += $3} END {print sum}'
+# Swagger UI
+open http://localhost:8000/swagger
+
+# Health check
+curl http://localhost:8000/health
 ```
 
-## Test Data Characteristics
+### Timing API (port 8001)
+```bash
+# Interactive docs
+open http://localhost:8001/docs
 
-### Users
-- `user_001` through `user_005` - Regular users with realistic journeys
-- `user_heavy` - High engagement, multiple campaigns
-- `user_low_engage` - Opens emails but doesn't click
-- `cohort_user_a/b/c` - Test cohort for A/B testing
+# Health check
+curl http://localhost:8001/health
 
-### Campaigns
-- `welcome_series` - Onboarding emails
-- `weekly_newsletter` - Regular content
-- `promo_jan` - Promotional campaign
-- `re_engagement` - Win-back campaign
+# Timing decision
+curl -X POST http://localhost:8001/timing-decision \
+  -H "Content-Type: application/json" \
+  -d '{"recipient_id": "user_003", "latency_estimate_seconds": 300}'
 
-### Event Types Distribution
-In realistic patterns:
-- 25% sent
-- 25% delivered
-- 25% opened
-- 25% clicked
-
-In random generation:
-- Random distribution across all types
-- Random timestamps within last week
-
-## Expected Output
-
-After running `generate-test-events.sh`:
+# Get features
+curl http://localhost:8001/features/user_003
 ```
-✅ Generated 100 random events
-✅ Generated journey for user_001 (sent → delivered → opened → clicked)
-✅ Generated journey for user_002 (sent → delivered → opened → clicked)
-✅ Generated journey for user_003 (sent → delivered → opened → clicked)
-✅ Generated journey for user_004 (sent → delivered → opened → clicked)
-✅ Generated journey for user_005 (sent → delivered → opened → clicked)
-✅ Generated 12 events for heavy user
-✅ Generated 5 low-engagement events
-✅ Generated 10 time-varied events
 
-📈 Summary:
-  - Total events: ~125
-  - Events successfully published to Kafka
+## Expected Results
+
+### Timing Decision Output
+```json
+{
+  "recipient_id": "user_003",
+  "model_version": "hourly_fallback_sto",
+  "peak_hour": 16,
+  "peak_probability": 0.091
+}
+```
+
+### v2.0 Output (Minute-Level)
+```json
+{
+  "decision_id": "uuid",
+  "universal_id": "user_003",
+  "target_minute_utc": 8618,
+  "trigger_timestamp_utc": "2026-01-10T23:33:00Z",
+  "latency_estimate_seconds": 300,
+  "confidence_score": 0.84,
+  "model_version": "minute_level_v2.0_click_based"
+}
 ```
 
 ## Troubleshooting
 
-### Connector not running
+### Docker services not running
 ```bash
-cd src/SendFlowr.Connectors
-dotnet run
+docker-compose up -d
+./scripts/init-databases.sh
 ```
 
-### Kafka not receiving events
+### API not responding
 ```bash
-# Check Kafka is running
-docker ps | grep kafka
+# Connector API
+cd src/SendFlowr.Connectors && dotnet run
 
-# Restart Kafka if needed
-docker-compose restart kafka
-
-# Check connector logs
-# (Look at the terminal where dotnet run is executing)
+# Timing API
+cd src/SendFlowr.Inference
+source venv/bin/activate
+python -m uvicorn main:app --reload --port 8001
 ```
 
-### Clear Kafka topic (start fresh)
+### No events in ClickHouse
 ```bash
-docker exec sendflowr-kafka kafka-topics \
-  --delete --topic email-events \
-  --bootstrap-server localhost:9092
+# Generate test events
+./scripts/generate-test-events.sh
 
-docker exec sendflowr-kafka kafka-topics \
-  --create --topic email-events \
-  --bootstrap-server localhost:9092 \
-  --partitions 3 \
-  --replication-factor 1
+# Start consumer
+cd src/SendFlowr.Consumer && dotnet run
+```
+
+### Python dependencies missing
+```bash
+cd src/SendFlowr.Inference
+source venv/bin/activate
+pip install -r requirements.txt scipy
+```
+
+## Performance Benchmarks
+
+Expected performance (local development):
+
+| Operation | v1.0 | v2.0 |
+|-----------|------|------|
+| Feature computation | ~100ms | ~150ms |
+| Prediction/Decision | ~50ms | ~80ms |
+| Cache hit | ~5ms | ~5ms |
+
+## Test Coverage
+
+- [x] Event ingestion (Kafka → ClickHouse)
+- [x] Feature computation (hourly & minute-level)
+- [x] v1.0 STO predictions
+- [x] v2.0 Timing decisions
+- [x] Latency compensation
+- [x] Backwards compatibility
+- [ ] Contextual signals (hot paths/circuit breakers)
+- [ ] Universal ID resolution
+- [ ] Latency tracker
+
+## Continuous Testing
+
+For automated testing in CI/CD:
+
+```bash
+# Quick smoke test
+./scripts/setup-and-test-v2.sh
+
+# Verify outputs
+test $(curl -s http://localhost:8001/health | grep -c "healthy") -eq 1
 ```

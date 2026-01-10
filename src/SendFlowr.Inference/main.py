@@ -1,175 +1,284 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import List, Dict, Optional, Any
-from datetime import datetime, timedelta
-import redis
-import json
-from feature_computer import FeatureComputer
-from baseline_model import BaselineModel
+"""
+SendFlowr Timing Layer API
+Clean layered architecture: Controllers → Services → Repositories
+"""
+from fastapi import FastAPI
+from scalar_fastapi import get_scalar_api_reference
+from models.requests import TimingRequest, LegacyPredictionRequest
+from models.responses import TimingDecisionResponse
+from controllers.timing_controller import TimingController
+from services.timing_service import TimingService
+from services.feature_service import FeatureService
+from repositories.event_repository import EventRepository
+from repositories.feature_repository import FeatureRepository
+from repositories.explanation_repository import ExplanationRepository
 
-app = FastAPI(title="SendFlowr Inference API", version="1.0.0")
 
-# Initialize services
-feature_computer = FeatureComputer()
-model = BaselineModel()
-redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
-
-# Request/Response models
-class PredictionRequest(BaseModel):
-    recipient_id: str
-    send_time: Optional[datetime] = None
-    hours_ahead: int = 24
+# Initialize FastAPI app
+app = FastAPI(
+    title="SendFlowr Timing Layer API",
+    version="2.0.0",
+    description="""
+    **SendFlowr Timing Intelligence Layer**
     
-class TimeWindow(BaseModel):
-    start: datetime
-    end: datetime
-    probability: float
+    Minute-level precision timing decisions with latency awareness.
+    
+    ## Features
+    - 🎯 10,080 minute-slot resolution (canonical time grid)
+    - 📊 Click-based engagement modeling (MPP resilient)
+    - ⚡ Latency-aware trigger computation
+    - 🔄 Continuous probability curves
+    - 📝 Explainable decision outputs
+    
+    ## Architecture
+    Clean layered design: **Controllers → Services → Repositories**
+    
+    ## Spec Compliance
+    Fully compliant with LLM-Ref specifications
+    """,
+    contact={
+        "name": "SendFlowr Team",
+    },
+    license_info={
+        "name": "Proprietary",
+    }
+)
 
-class PredictionResponse(BaseModel):
-    recipient_id: str
-    curve: List[Dict[str, Any]]
-    optimal_windows: List[TimeWindow]
-    explanation: Dict[str, Any]
-    features_used: Dict[str, Any]
-    model_version: str
+# Initialize layers (Dependency Injection)
+event_repo = EventRepository()
+feature_repo = FeatureRepository()
+explanation_repo = ExplanationRepository()
 
-class FeatureResponse(BaseModel):
-    recipient_id: str
-    hour_histogram_24: Dict[int, float]
-    weekday_histogram_7: Dict[int, float]
-    last_open_ts: Optional[str]
-    last_click_ts: Optional[str]
-    open_count_30d: int
-    click_count_30d: int
-    open_count_7d: int
-    click_count_7d: int
-    computed_at: str
+# Identity resolution layer
+from repositories.identity_repository import IdentityRepository
+from services.identity_service import IdentityResolver
 
+identity_repo = IdentityRepository(event_repo.client)  # Reuse ClickHouse client
+identity_resolver = IdentityResolver(identity_repo)
+
+# Feature and timing services
+feature_service = FeatureService(event_repo, feature_repo)
+timing_service = TimingService(feature_service, identity_resolver, feature_repo, explanation_repo)
+
+controller = TimingController(timing_service, feature_service)
+
+
+# Routes - thin layer, delegates to controller
 @app.get("/")
 def root():
     return {
-        "service": "SendFlowr Inference API",
-        "version": "1.0.0",
-        "status": "running",
+        "service": "SendFlowr Timing Layer API",
+        "version": "2.0.0",
+        "architecture": "Layered (Controller → Service → Repository)",
+        "compliance": "Minute-level resolution with latency awareness",
+        "documentation": {
+            "swagger": "/docs",
+            "scalar": "/scalar",
+            "redoc": "/redoc",
+            "openapi": "/openapi.json"
+        },
         "endpoints": {
-            "predict": "/predict",
+            "timing_decision": "/timing-decision (primary)",
+            "predict": "/predict (legacy STO fallback)",
             "features": "/features/{recipient_id}",
-            "compute_features": "/compute-features/{recipient_id}",
+            "compute_features": "/compute-features",
             "health": "/health"
         }
     }
 
-@app.get("/health")
+
+@app.get("/scalar", include_in_schema=False)
+async def scalar_html():
+    """Scalar API documentation UI"""
+    return get_scalar_api_reference(
+        openapi_url=app.openapi_url,
+        title=app.title,
+    )
+
+
+@app.get("/health",
+        tags=["System"],
+        summary="Health check",
+        description="Check API health and database connectivity")
 def health_check():
+    """Health check endpoint"""
     try:
-        # Check Redis
-        redis_client.ping()
-        # Check ClickHouse
-        feature_computer.ch_client.execute("SELECT 1")
-        return {"status": "healthy", "redis": "ok", "clickhouse": "ok"}
+        feature_repo.client.ping()
+        event_repo.client.execute("SELECT 1")
+        return {
+            "status": "healthy",
+            "redis": "ok",
+            "clickhouse": "ok",
+            "architecture": "layered"
+        }
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
 
-@app.post("/predict", response_model=PredictionResponse)
-def predict_engagement(request: PredictionRequest):
-    """
-    Predict optimal engagement windows for a recipient
-    """
-    # Get features from cache or compute
-    features = feature_computer.get_features(request.recipient_id)
-    
-    if not features:
-        # Compute features on-demand
-        try:
-            features = feature_computer.compute_all_features(request.recipient_id)
-            feature_computer.store_features(request.recipient_id, features)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to compute features: {str(e)}")
-    
-    # Convert string keys to integers for histograms
-    hour_hist = {int(k): v for k, v in features['hour_histogram_24'].items()}
-    weekday_hist = {int(k): v for k, v in features['weekday_histogram_7'].items()}
-    
-    # Use current time if not specified
-    send_time = request.send_time or datetime.utcnow()
-    
-    # Generate prediction curve
-    curve = model.predict_engagement_curve(
-        hour_histogram=hour_hist,
-        weekday_histogram=weekday_hist,
-        send_time=send_time,
-        hours_ahead=request.hours_ahead
-    )
-    
-    # Find optimal windows
-    windows = model.find_optimal_send_window(curve, window_size_hours=2, top_k=3)
-    
-    # Generate explanation
-    explanation = model.explain_prediction(
-        hour_histogram=hour_hist,
-        weekday_histogram=weekday_hist
-    )
-    
-    # Cache prediction
-    cache_key = f"prediction:{request.recipient_id}"
-    redis_client.setex(cache_key, 3600, json.dumps({
-        'curve': [(t.isoformat(), p) for t, p in curve],
-        'windows': [(s.isoformat(), e.isoformat(), p) for s, e, p in windows],
-        'cached_at': datetime.utcnow().isoformat()
-    }))
-    
-    return PredictionResponse(
-        recipient_id=request.recipient_id,
-        curve=[{"time": t.isoformat(), "probability": p} for t, p in curve],
-        optimal_windows=[
-            TimeWindow(start=s, end=e, probability=p) 
-            for s, e, p in windows
-        ],
-        explanation=explanation,
-        features_used={
-            'hour_histogram_24': hour_hist,
-            'weekday_histogram_7': weekday_hist,
-            'open_count_30d': features.get('open_count_30d', 0),
-            'click_count_30d': features.get('click_count_30d', 0)
-        },
-        model_version=model.name
-    )
 
-@app.get("/features/{recipient_id}", response_model=FeatureResponse)
+@app.post("/timing-decision", 
+         response_model=TimingDecisionResponse,
+         tags=["Timing Decisions"],
+         summary="Generate timing decision (Primary)",
+         description="""
+         Generate a spec-compliant timing decision with minute-level precision.
+         
+         **This is the primary endpoint for production use.**
+         
+         ### Features:
+         - Minute-level resolution (10,080 slots)
+         - Click-based engagement modeling
+         - Latency-aware trigger computation
+         - Context-aware (hot paths, circuit breakers)
+         - Explainable outputs
+         
+         ### Returns:
+         TimingDecision object per spec.json schema
+         """)
+def generate_timing_decision(request: TimingRequest):
+    """
+    Primary endpoint: Generate timing decision per spec.json
+    
+    Delegates to: TimingController → TimingService → Repositories
+    """
+    return controller.generate_timing_decision(request)
+
+
+@app.post("/predict",
+         tags=["Legacy"],
+         summary="Hourly STO prediction (Legacy)",
+         description="""
+         Legacy hour-level Send Time Optimization endpoint.
+         
+         **Deprecated:** Use `/timing-decision` for minute-level precision.
+         
+         This endpoint is maintained for backwards compatibility only.
+         """,
+         deprecated=True)
+def legacy_predict(request: LegacyPredictionRequest):
+    """
+    Legacy STO fallback endpoint
+    
+    Per spec: "Hour-level Send Time Optimization MUST remain supported"
+    """
+    return controller.legacy_predict(request)
+
+
+@app.get("/features/{recipient_id}",
+        tags=["Features"],
+        summary="Get computed features",
+        description="Retrieve cached minute-level features for a recipient")
 def get_features(recipient_id: str):
-    """
-    Get cached features for a recipient
-    """
-    features = feature_computer.get_features(recipient_id)
-    
-    if not features:
-        raise HTTPException(status_code=404, detail=f"No features found for {recipient_id}")
-    
-    return FeatureResponse(**features)
+    """Get cached features (v2 minute-level)"""
+    return controller.get_features(recipient_id)
 
-@app.post("/compute-features/{recipient_id}")
-def compute_features(recipient_id: str):
-    """
-    Compute and store features for a recipient
-    """
-    try:
-        features = feature_computer.compute_all_features(recipient_id)
-        feature_computer.store_features(recipient_id, features)
-        return {"status": "success", "recipient_id": recipient_id, "features": features}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/compute-all-features")
+@app.post("/compute-features/{recipient_id}",
+         tags=["Features"],
+         summary="Compute features on-demand",
+         description="Force recomputation of features for a specific user")
+def compute_features_for_user(recipient_id: str):
+    """Compute features on-demand for a specific user"""
+    return controller.compute_features(recipient_id)
+
+
+@app.post("/compute-features",
+         tags=["Features"],
+         summary="Compute features for all users",
+         description="Batch compute minute-level features for all active users")
 def compute_all_features():
-    """
-    Compute features for all active users
-    """
+    """Compute minute-level features for all active users"""
+    return controller.compute_features()
+
+
+# Identity Resolution Endpoints
+@app.post("/resolve-identity",
+         tags=["Identity"],
+         summary="Resolve identity to Universal SendFlowr ID",
+         description="""
+         Resolves multiple identity keys to a single Universal SendFlowr ID.
+         
+         **Deterministic keys** (highest priority):
+         - email (hashed internally)
+         - phone (normalized to E.164)
+         
+         **Probabilistic keys** (graph-based matching):
+         - klaviyo_id
+         - shopify_customer_id
+         - esp_user_id
+         
+         Returns Universal ID with audit trail.
+         """)
+def resolve_identity(
+    email: str = None,
+    phone: str = None,
+    klaviyo_id: str = None,
+    shopify_customer_id: str = None,
+    esp_user_id: str = None
+):
+    """Resolve identity keys to Universal SendFlowr ID"""
+    identifiers = {}
+    if email:
+        identifiers['email'] = email
+    if phone:
+        identifiers['phone'] = phone
+    if klaviyo_id:
+        identifiers['klaviyo_id'] = klaviyo_id
+    if shopify_customer_id:
+        identifiers['shopify_customer_id'] = shopify_customer_id
+    if esp_user_id:
+        identifiers['esp_user_id'] = esp_user_id
+    
+    if not identifiers:
+        return {"error": "No identity keys provided"}
+    
+    resolution = identity_resolver.resolve(identifiers)
+    return resolution.to_dict()
+
+
+@app.post("/link-identifiers",
+         tags=["Identity"],
+         summary="Link two identifiers in identity graph",
+         description="""
+         Create bidirectional link between identifiers.
+         
+         **Weight** determines confidence:
+         - 1.0 = deterministic (same person)
+         - < 1.0 = probabilistic (likely same person)
+         
+         **Source** tracks origin:
+         - 'klaviyo_webhook', 'shopify_order', 'manual', etc.
+         """)
+def link_identifiers(
+    identifier_a: str,
+    type_a: str,
+    identifier_b: str,
+    type_b: str,
+    weight: float = 1.0,
+    source: str = "api"
+):
+    """Link two identifiers in identity graph"""
+    from core.identity_model import IdentifierType
+    
     try:
-        feature_computer.compute_and_store_all_users()
-        return {"status": "success", "message": "Features computed for all users"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        type_a_enum = IdentifierType(type_a)
+        type_b_enum = IdentifierType(type_b)
+    except ValueError:
+        return {"error": f"Invalid identifier type. Must be one of: {[t.value for t in IdentifierType]}"}
+    
+    identity_resolver.link_identifiers(
+        identifier_a, type_a_enum,
+        identifier_b, type_b_enum,
+        weight, source
+    )
+    
+    return {
+        "status": "linked",
+        "identifier_a": identifier_a,
+        "identifier_b": identifier_b,
+        "weight": weight
+    }
+
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

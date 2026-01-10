@@ -141,7 +141,7 @@ public class KlaviyoConnector : IEspConnector
             EventType = eventType,
             Timestamp = attributes?["datetime"]?.ToObject<DateTime>() ?? DateTime.UtcNow,
             Esp = EspProviders.Klaviyo,
-            RecipientId = attributes?["profile"]?["data"]?["id"]?.ToString() ?? "",
+            UniversalId = "", // Will be resolved by controller
             RecipientEmail = attributes?["profile"]?["data"]?["attributes"]?["email"]?.ToString(),
             CampaignId = attributes?["campaign"]?["data"]?["id"]?.ToString() ?? "",
             CampaignName = attributes?["campaign"]?["data"]?["attributes"]?["name"]?.ToString(),
@@ -153,7 +153,8 @@ public class KlaviyoConnector : IEspConnector
             IngestedAt = DateTime.UtcNow,
             Metadata = new Dictionary<string, object>
             {
-                ["klaviyo_event_id"] = eventData["id"]?.ToString() ?? ""
+                ["klaviyo_event_id"] = eventData["id"]?.ToString() ?? "",
+                ["klaviyo_profile_id"] = attributes?["profile"]?["data"]?["id"]?.ToString() ?? ""
             }
         };
     }

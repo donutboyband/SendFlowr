@@ -1,37 +1,19 @@
-# SendFlowr v2.0 - Timing Layer Migration Guide
+# SendFlowr - Timing Layer Architecture
 
-## What Changed
+## System Design
 
-SendFlowr has been refactored from traditional **Send Time Optimization (STO)** to a **Timing Intelligence Layer** with minute-level precision.
+SendFlowr is a **Timing Intelligence Layer** with minute-level precision, following the architectural spec from LLM-Ref.
 
-### Before (v1.0 - STO)
-- Hour-level resolution (24 buckets)
-- Discrete histograms
-- Open-rate focused
-- ESP-coupled execution
-- "Best hour" recommendations
-
-### After (v2.0 - Timing Layer)
+### Core Principles
 - **Minute-level resolution** (10,080 slots/week)
 - **Continuous probability curves**
 - **Click/conversion focused** (MPP resilient)
 - **Latency-aware triggers**
 - **Precise timestamp outputs**
 
-## Core Changes
+## Core Architecture
 
 ### 1. Time Model: Minute-Level Grid
-
-**Old (Hourly)**:
-```python
-hour_histogram = {
-    9: 0.15,   # 9 AM
-    10: 0.12,  # 10 AM
-    18: 0.20   # 6 PM
-}
-```
-
-**New (Minute-Level)**:
 ```python
 # 10,080 minute slots (Mon 00:00 = slot 0, Sun 23:59 = slot 10079)
 curve = ContinuousCurve(minute_probabilities)  # numpy array of 10,080 floats
@@ -74,7 +56,7 @@ Per spec: *"Opens are weak signals. Clicks, conversions, replies dominate all in
 ```json
 {
   "decision_id": "uuid-here",
-  "universal_user_id": "user_003",
+  "universal_id": "user_003",
   "target_minute_utc": 8618,
   "trigger_timestamp_utc": "2026-01-10T23:33:17Z",
   "latency_estimate_seconds": 300,
@@ -190,8 +172,8 @@ readable = MinuteSlotGrid.slot_to_readable(slot)  # "Mon 14:35"
 ```bash
 cd src/SendFlowr.Inference
 source venv/bin/activate
-pip install scipy  # New dependency
-python -m uvicorn main_v2:app --reload --port 8001
+pip install scipy
+python -m uvicorn main:app --reload --port 8001
 ```
 
 ### Compute Minute-Level Features

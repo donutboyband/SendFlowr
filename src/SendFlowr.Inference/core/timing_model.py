@@ -7,7 +7,7 @@ and continuous probability curve primitives per the Timing Layer spec.
 
 import numpy as np
 from typing import Dict, List, Tuple, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from scipy.interpolate import interp1d
 from scipy.ndimage import gaussian_filter1d
 
@@ -169,20 +169,46 @@ class ContinuousCurve:
     
     @classmethod
     def from_click_events(cls, click_timestamps: List[datetime], 
-                         sigma_minutes: int = 60) -> 'ContinuousCurve':
+                         sigma_minutes: int = 60,
+                         recency_half_life_hours: float = 72.0) -> 'ContinuousCurve':
         """
-        Build continuous curve from click events (preferred signal)
+        Build continuous curve from click events with recency weighting
         
         Per spec: "Clicks, conversions, replies, and real-time activity 
         dominate all inference."
-        """
-        # Convert timestamps to minute slots
-        slots = [MinuteSlotGrid.datetime_to_minute_slot(ts) for ts in click_timestamps]
         
-        # Build density estimate
+        Upgrade #1: Recency-weighted curves
+        - Recent clicks weighted higher (exponential decay)
+        - Default half-life: 3 days (72 hours)
+        - Prevents old behavior from polluting current intent
+        """
+        if not click_timestamps:
+            # No clicks - return uniform distribution
+            return cls(np.ones(MINUTES_PER_WEEK) / MINUTES_PER_WEEK)
+        
+        # Get current time for recency calculation
+        now = datetime.now(timezone.utc)
+        
+        # Convert timestamps to minute slots with recency weights
         minute_counts = np.zeros(MINUTES_PER_WEEK)
-        for slot in slots:
-            minute_counts[slot] += 1
+        
+        for ts in click_timestamps:
+            # Ensure timezone aware
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            else:
+                ts = ts.astimezone(timezone.utc)
+            
+            # Calculate age in hours
+            age_hours = (now - ts).total_seconds() / 3600
+            
+            # Exponential decay weight (half-life)
+            # weight = exp(-age_hours * ln(2) / half_life)
+            weight = np.exp(-age_hours * np.log(2) / recency_half_life_hours)
+            
+            # Add weighted click to slot
+            slot = MinuteSlotGrid.datetime_to_minute_slot(ts)
+            minute_counts[slot] += weight
         
         # Apply Gaussian smoothing for continuity
         smoothed = gaussian_filter1d(minute_counts, sigma=sigma_minutes, mode='wrap')
@@ -191,6 +217,12 @@ class ContinuousCurve:
         smoothed += 0.001
         
         return cls(smoothed)
+
+
+def _ensure_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 class TimingDecision:
@@ -203,7 +235,7 @@ class TimingDecision:
     def __init__(
         self,
         decision_id: str,
-        universal_user_id: str,
+        universal_id: str,
         target_minute_utc: int,
         trigger_timestamp_utc: datetime,
         latency_estimate_seconds: float,
@@ -215,14 +247,14 @@ class TimingDecision:
         suppressed: bool = False
     ):
         self.decision_id = decision_id
-        self.universal_user_id = universal_user_id
+        self.universal_id = universal_id
         self.target_minute_utc = target_minute_utc
-        self.trigger_timestamp_utc = trigger_timestamp_utc
+        self.trigger_timestamp_utc = _ensure_utc(trigger_timestamp_utc)
         self.latency_estimate_seconds = latency_estimate_seconds
         self.confidence_score = confidence_score
         self.model_version = model_version
         self.explanation_ref = explanation_ref
-        self.created_at_utc = datetime.utcnow()
+        self.created_at_utc = datetime.now(timezone.utc)
         
         # Debug payload
         self.debug = {
@@ -235,14 +267,14 @@ class TimingDecision:
         """Export as canonical JSON per spec.json"""
         return {
             'decision_id': self.decision_id,
-            'universal_user_id': self.universal_user_id,
+            'universal_id': self.universal_id,
             'target_minute_utc': self.target_minute_utc,
-            'trigger_timestamp_utc': self.trigger_timestamp_utc.isoformat(),
+            'trigger_timestamp_utc': self.trigger_timestamp_utc.isoformat().replace('+00:00', 'Z'),
             'latency_estimate_seconds': self.latency_estimate_seconds,
             'confidence_score': self.confidence_score,
             'model_version': self.model_version,
             'explanation_ref': self.explanation_ref,
-            'created_at_utc': self.created_at_utc.isoformat(),
+            'created_at_utc': self.created_at_utc.isoformat().replace('+00:00', 'Z'),
             'debug': self.debug
         }
 

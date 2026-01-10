@@ -9,6 +9,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddHttpClient<IEspConnector, KlaviyoConnector>();
+builder.Services.AddHttpClient<IIdentityResolutionService, IdentityResolutionService>();
 builder.Services.AddSingleton<IEventPublisher, KafkaEventPublisher>();
 
 var app = builder.Build();

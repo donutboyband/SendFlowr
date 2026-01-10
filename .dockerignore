@@ -1,0 +1,51 @@
+# Git
+.git
+.gitignore
+
+# Build outputs
+**/bin/
+**/obj/
+**/out/
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.Python
+**/.venv/
+**/venv/
+**/ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+**/logs/
+
+# Documentation (already in image)
+*.md
+docs/
+LLM-Ref/
+
+# Tests (build separately)
+**/tests/
+**/*Tests/
+**/*.Tests/
+
+# Scripts (not needed in container)
+scripts/
+
+# Docker
+docker-compose*.yml
+Dockerfile
+.dockerignore

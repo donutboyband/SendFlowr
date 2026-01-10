@@ -6,8 +6,8 @@ public class CanonicalEvent
     public required string EventType { get; set; }
     public required DateTime Timestamp { get; set; }
     public required string Esp { get; set; }
-    public required string RecipientId { get; set; }
-    public string? RecipientEmail { get; set; }
+    public required string UniversalId { get; set; }
+    public string? RecipientEmail { get; set; }  // Will be hashed before storage
     public required string CampaignId { get; set; }
     public string? CampaignName { get; set; }
     public string? MessageId { get; set; }

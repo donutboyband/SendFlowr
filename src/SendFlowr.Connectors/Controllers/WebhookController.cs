@@ -10,15 +10,18 @@ public class WebhookController : ControllerBase
 {
     private readonly IEspConnector _connector;
     private readonly IEventPublisher _eventPublisher;
+    private readonly IIdentityResolutionService _identityResolution;
     private readonly ILogger<WebhookController> _logger;
 
     public WebhookController(
         IEspConnector connector,
         IEventPublisher eventPublisher,
+        IIdentityResolutionService identityResolution,
         ILogger<WebhookController> logger)
     {
         _connector = connector;
         _eventPublisher = eventPublisher;
+        _identityResolution = identityResolution;
         _logger = logger;
     }
 
@@ -44,10 +47,19 @@ public class WebhookController : ControllerBase
             }
 
             var canonicalEvent = _connector.ParseWebhookEvent(payload);
-            await _eventPublisher.PublishAsync("email-events", canonicalEvent.RecipientId, canonicalEvent);
+            
+            var plainEmail = canonicalEvent.RecipientEmail;  // Keep original for resolution
+            
+            var universalId = await _identityResolution.ResolveIdentityAsync(
+                email: plainEmail,
+                klaviyoId: canonicalEvent.Metadata?.GetValueOrDefault("klaviyo_profile_id")?.ToString());
+            
+            canonicalEvent.UniversalId = universalId;
+            canonicalEvent.RecipientEmail = _identityResolution.HashEmail(plainEmail);  // Hash before publishing
+            await _eventPublisher.PublishAsync("email-events", canonicalEvent.UniversalId, canonicalEvent);
 
-            _logger.LogInformation("Webhook processed: {EventType} for recipient {RecipientId}", 
-                canonicalEvent.EventType, canonicalEvent.RecipientId);
+            _logger.LogInformation("Webhook processed: {EventType} for universal_id {UniversalId}", 
+                canonicalEvent.EventType, canonicalEvent.UniversalId);
 
             return Ok();
         }

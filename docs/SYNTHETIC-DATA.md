@@ -1,228 +1,335 @@
-# Synthetic Data Generation for ML Training
+# Synthetic Data Generator - SendFlowr ML Training
 
-## Problem
+## Critical Design Principles
 
-Currently we have only **380 events** across **10 users** over **8 days**. This is insufficient for ML training:
+This generator creates realistic email engagement data for training SendFlowr's timing intelligence layer, following the architectural spec from LLM-Ref.
 
-- Minute-level models need dense temporal coverage
-- Click prediction requires 100s-1000s of click events per user
-- Persona detection needs variety in behavioral patterns
-- Cold-start handling requires testing with new users
+## Key Features
 
-## Solution
+### 1. ✅ ESP Latency Modeling
 
-Generate **synthetic data** with realistic patterns:
+**Realistic congestion modeling** for latency-aware timing:
 
-### User Personas (350 users total)
-
-| Persona | Count | Peak Hours | Active Days | Click Rate | Open Rate |
-|---------|-------|------------|-------------|------------|-----------|
-| **morning_person** | 50 | 7-9 AM | Weekdays | 15% | 35% |
-| **evening_person** | 50 | 6-10 PM | All days | 18% | 40% |
-| **night_owl** | 30 | 10 PM-2 AM | Weekends | 12% | 28% |
-| **lunch_browser** | 40 | 12-1 PM | Weekdays | 20% | 45% |
-| **weekend_warrior** | 35 | 10 AM-4 PM | Weekends | 25% | 50% |
-| **commuter** | 45 | 8-9 AM, 5-6 PM | Weekdays | 16% | 38% |
-| **sporadic** | 50 | Random | All days | 8% | 20% |
-| **highly_engaged** | 20 | Multiple peaks | All days | 35% | 65% |
-| **low_engaged** | 30 | Rare | All days | 3% | 10% |
-
-### Data Volume
-
-**Time Period**: 101 days (Oct 1, 2025 - Jan 10, 2026)
-
-**Expected Events**:
-- Total: ~500,000-1,000,000 events
-- Per user: ~1,500-3,000 events
-- Clicks: ~80,000-120,000
-- Opens: ~150,000-200,000
-
-### Realistic Event Sequences
-
-```
-sent → delivered (99%, 1-30s delay)
-     → opened (varies by persona, 1min-48hr delay)
-          → clicked (conditional on open, 1-60min delay)
+```python
+def _sample_esp_latency(send_time):
+    base = lognormal(median=12s)
+    
+    # Top-of-hour congestion (3-6x slower)
+    if minute in [0, 1, 2]:
+        base *= 3.0-6.0
+    
+    # Morning/evening batch pressure (1.5-2.5x slower)
+    if hour in [8, 9, 18, 19]:
+        base *= 1.5-2.5
+    
+    # Weekends are faster (0.7x)
+    if weekend:
+        base *= 0.7
 ```
 
-## Usage
+**ML Impact**: Model learns **when to trigger** to hit target delivery window
 
-### 1. Show Summary
+---
+
+### 2. ✅ Engagement Based on DELIVERY Time
+
+**Critical**: Engagement is checked against **delivery time**, not send time:
+```python
+delivered_time = send_time + esp_latency
+should_engage = _should_engage_at_time(user, delivered_time)  # ✅
+```
+
+**Why This Matters**: Users engage when they **receive** email, not when you sent it.
+
+---
+
+### 3. ✅ Minute-Level Intent Spikes
+
+**Specific minute boosts** for granular patterns:
+
+```python
+# Peak minutes per persona
+peak_minutes = [15, 22, 38, 47]
+
+if minute in peak_minutes:
+    engagement_prob *= 1.3  # 30% boost
+
+# Top-of-hour fatigue
+if minute in [0, 1, 59]:
+    engagement_prob *= 0.7  # 30% penalty
+```
+
+**ML Impact**: Learns why **18:47 beats 18:00** (everyone's inbox slammed at top of hour)
+
+---
+
+### 4. ✅ Circuit Breaker Events
+
+**Negative intent events** for suppression logic:
+
+```python
+# Generate suppression events
+{
+  "event_type": "support_ticket",
+  "timestamp": "...",
+  "source": "zendesk"
+}
+
+# Suppress engagement for 48h after
+circuit_breaker_until = timestamp + 48h
+```
+
+**Event Types**:
+- `support_ticket` → 48h suppression
+- `complaint` → 48h suppression  
+- `unsubscribe_request` → 168h (1 week) suppression
+
+**ML Impact**: Trains confidence collapse and "do not send" outcomes
+
+---
+
+### 5. ✅ Hot Path Boosts
+
+**Problem**: V1 had no acceleration signals  
+**Solution**: Real-time activity boosts
+
+```python
+# Generate hot path events
+{
+  "event_type": "site_visit",  # or sms_click, product_view
+  "timestamp": "...",
+  "metadata": {"hot_path": true}
+}
+
+# Boost engagement within 30 min (exponential decay)
+if minutes_since_hot_path < 30:
+    engagement_mult = 2.0 * exp(-minutes / 15)
+```
+
+**ML Impact**: Trains event-driven overrides and recency weighting
+
+---
+
+### 6. ✅ Campaign Fatigue
+
+**Problem**: V1 had static engagement rates  
+**Solution**: Decay after repeated sends
+
+```python
+# Track sends in last 24h
+recent_sends = count_sends_last_24h(user)
+
+if recent_sends == 0:
+    fatigue_mult = 1.0
+elif recent_sends == 1:
+    fatigue_mult = 0.95
+elif recent_sends == 2:
+    fatigue_mult = 0.85
+elif recent_sends >= 3:
+    fatigue_mult = 0.60  # Significant fatigue
+```
+
+**ML Impact**: Teaches **when NOT to send**
+
+---
+
+### 7. ✅ Confidence Drift
+
+**Problem**: V1 personas were perfectly static (overfitting risk)  
+**Solution**: Slow drift over time
+
+```python
+# Monthly drift
+config['click_rate'] *= random.uniform(0.998, 1.002)
+config['open_rate'] *= random.uniform(0.998, 1.002)
+```
+
+**ML Impact**: Prevents overfitting to exact persona parameters
+
+---
+
+## How to Use
+
+### Generate V2 Data
+
 ```bash
-python3 scripts/generate-synthetic-data.py --summary
+# See summary
+python3 scripts/generate-synthetic-data-v2.py --summary
+
+# Dry run (no Kafka)
+python3 scripts/generate-synthetic-data-v2.py --dry-run
+
+# Generate for real
+pip install confluent-kafka
+python3 scripts/generate-synthetic-data-v2.py
 ```
 
-Output:
-```
-📊 Expected Data Summary:
-  Total Users: 350
-  Time Period: 101 days
-  Expected Events: ~70,700 (rough estimate)
-```
-
-### 2. Dry Run (Calculate without publishing)
-```bash
-python3 scripts/generate-synthetic-data.py --dry-run
-```
-
-This will:
-- Generate all events in memory
-- Count totals
-- NOT publish to Kafka
-- ~1-2 minutes to complete
-
-### 3. Generate Real Data
-```bash
-# Make sure services are running
-docker-compose up -d
-
-# Start consumer first (to process events)
-cd src/SendFlowr.Consumer && dotnet run &
-
-# Generate data (WARNING: creates ~500K-1M events!)
-python3 scripts/generate-synthetic-data.py
-```
-
-This will:
-- Generate 101 days of synthetic data
-- Publish to Kafka topic `email-events`
-- Consumer writes to ClickHouse
-- Takes ~5-10 minutes
-
-## Dependencies
+### Recompute Features
 
 ```bash
-pip install confluent-kafka numpy
+# After generation, recompute minute-level features
+curl -X POST http://localhost:8001/compute-features
 ```
 
-Or use dry-run mode without Kafka:
-```bash
-python3 scripts/generate-synthetic-data.py --dry-run
-```
-
-## Why This Helps ML
-
-### 1. Dense Temporal Coverage
-- Events across all 10,080 minute slots
-- Multiple observations per slot
-- Seasonal/weekly patterns emerge
-
-### 2. Persona Diversity
-- 9 distinct behavioral patterns
-- Varying engagement levels
-- Different time-of-day preferences
-
-### 3. Click Prediction
-- 80K-120K click events
-- Conditional on opens (realistic)
-- Time delays modeled
-
-### 4. Model Validation
-- Holdout sets for testing
-- Cold-start scenarios (new users)
-- Confidence calibration
-
-### 5. Feature Engineering
-- Sufficient data for minute-level histograms
-- Smooth continuous curves
-- Recency/frequency patterns
-
-## Data Quality
-
-### Realistic Aspects
-✅ Temporal patterns (time of day, day of week)
-✅ Event sequences (sent → delivered → opened → clicked)
-✅ Variable delays (exponential distribution)
-✅ Persona-specific behavior
-✅ Campaign variations
-✅ Conditional probabilities (click|open)
-
-### Limitations
-⚠️ No seasonality (holidays, summer slumps)
-⚠️ No email fatigue modeling
-⚠️ No A/B testing effects
-⚠️ Fixed personas (no drift over time)
-⚠️ No deliverability issues (99% delivered)
-
-## Validation
-
-After generation, verify:
+### Validate
 
 ```bash
-# Total events
+# Check events by type
 curl 'http://localhost:8123/?user=sendflowr&password=sendflowr_dev' \
-  -d 'SELECT count() FROM sendflowr.email_events'
+  -d "SELECT event_type, count() FROM sendflowr.email_events GROUP BY event_type"
 
-# Events by type
+# Check latency tracking
 curl 'http://localhost:8123/?user=sendflowr&password=sendflowr_dev' \
-  -d 'SELECT event_type, count() FROM sendflowr.email_events GROUP BY event_type'
-
-# Users with most clicks
-curl 'http://localhost:8123/?user=sendflowr&password=sendflowr_dev' \
-  -d 'SELECT recipient_id, countIf(event_type = '\''clicked'\'') as clicks 
+  -d "SELECT avg(latency_seconds), quantile(0.5)(latency_seconds), quantile(0.95)(latency_seconds)
       FROM sendflowr.email_events 
-      GROUP BY recipient_id 
-      ORDER BY clicks DESC 
-      LIMIT 10'
+      WHERE event_type = 'delivered' AND latency_seconds > 0"
 
-# Time distribution
+# Check circuit breakers
 curl 'http://localhost:8123/?user=sendflowr&password=sendflowr_dev' \
-  -d 'SELECT toHour(timestamp) as hour, count() as events
-      FROM sendflowr.email_events
-      WHERE event_type = '\''clicked'\''
-      GROUP BY hour
-      ORDER BY hour'
+  -d "SELECT event_type, count() FROM sendflowr.email_events 
+      WHERE event_type IN ('support_ticket', 'complaint', 'unsubscribe_request')
+      GROUP BY event_type"
+
+# Check hot paths
+curl 'http://localhost:8123/?user=sendflowr&password=sendflowr_dev' \
+  -d "SELECT event_type, count() FROM sendflowr.email_events 
+      WHERE event_type IN ('site_visit', 'sms_click', 'product_view')
+      GROUP BY event_type"
 ```
+
+---
+
+## Data Volume
+
+**V1**: ~71K events  
+**V2**: ~80-100K events (includes circuit breakers, hot paths)
+
+**Breakdown**:
+- Email events: ~71K (sent, delivered, opened, clicked)
+- Circuit breakers: ~700-1000 (1% of users)
+- Hot paths: ~3500-5000 (5% occurrence rate)
+
+---
+
+## ML Training Now Possible
+
+### V1 Could Train
+✅ When users like to engage (time of day, day of week)  
+✅ Persona clustering  
+✅ Continuous curve generation
+
+### V2 Additionally Trains
+✅ **When to trigger** to hit target window (latency offset)  
+✅ **Why top-of-hour is bad** (congestion penalties)  
+✅ **Suppression logic** (circuit breakers)  
+✅ **Acceleration logic** (hot paths)  
+✅ **Fatigue modeling** (when not to send)  
+✅ **Confidence gating** (drift + uncertainty)
+
+---
+
+## Expected Confidence Improvements
+
+**Before V1 Data**: 4% confidence (380 events, sparse)  
+**After V1 Data**: 30-40% confidence (better curves)  
+**After V2 Data**: **60-80% confidence** (full timing layer signals)
+
+---
+
+## Validation Queries
+
+### Latency Distribution
+```sql
+SELECT 
+    toHour(timestamp) as hour,
+    toStartOfMinute(timestamp) as minute,
+    avg(latency_seconds) as avg_latency,
+    quantile(0.95)(latency_seconds) as p95_latency
+FROM sendflowr.email_events
+WHERE event_type = 'delivered' AND latency_seconds > 0
+GROUP BY hour, minute
+ORDER BY hour, minute
+```
+
+**Expected**: Spikes at top-of-hour (:00-:02) and peak send times (8-9 AM, 6-7 PM)
+
+### Hot Path Impact
+```sql
+-- Users who had hot path events
+WITH hot_path_users AS (
+    SELECT DISTINCT recipient_id
+    FROM sendflowr.email_events
+    WHERE event_type IN ('site_visit', 'sms_click', 'product_view')
+)
+SELECT 
+    h.recipient_id,
+    countIf(e.event_type = 'clicked') as clicks,
+    countIf(e.event_type = 'opened') as opens
+FROM hot_path_users h
+JOIN sendflowr.email_events e ON h.recipient_id = e.recipient_id
+GROUP BY h.recipient_id
+ORDER BY clicks DESC
+LIMIT 10
+```
+
+**Expected**: Hot path users should have higher click rates
+
+### Circuit Breaker Effectiveness
+```sql
+-- Events after circuit breaker
+SELECT 
+    recipient_id,
+    event_type,
+    timestamp
+FROM sendflowr.email_events
+WHERE recipient_id IN (
+    SELECT DISTINCT recipient_id 
+    FROM sendflowr.email_events 
+    WHERE event_type = 'support_ticket'
+)
+ORDER BY recipient_id, timestamp
+```
+
+**Expected**: Minimal engagement 48h after support tickets
+
+---
+
+## Differences from V1
+
+| Feature | V1 | V2 |
+|---------|----|----|
+| Latency | Uniform 1-30s | Congestion-aware (log-normal + spikes) |
+| Engagement Timing | Based on send time ❌ | Based on delivery time ✅ |
+| Minute Spikes | None | Per-persona peak minutes |
+| Circuit Breakers | None | Support tickets, complaints, unsubscribes |
+| Hot Paths | None | Site visits, SMS clicks, product views |
+| Fatigue | None | Decay after 3+ sends/24h |
+| Drift | None | Monthly confidence drift |
+| ML Training | Curves only | **Full timing layer** |
+
+---
 
 ## Next Steps
 
-After generating synthetic data:
+1. **Generate V2 data** (~5 min)
+2. **Recompute features** with latency awareness
+3. **Validate latency distributions** (should see top-of-hour spikes)
+4. **Train offset predictor** (trigger_time = target - predicted_latency)
+5. **Test circuit breaker detection**
+6. **Test hot path acceleration**
+7. **Measure confidence improvement** (should be 60-80%)
 
-1. **Recompute Features**
-   ```bash
-   curl -X POST http://localhost:8001/compute-features
-   ```
+---
 
-2. **Validate Curves**
-   - Check confidence scores (should be higher)
-   - Verify peak windows match personas
-   - Test predictions on holdout users
+## Summary
 
-3. **Model Training**
-   - Train on 80% of users
-   - Validate on 20% holdout
-   - Measure RMSE, MAE on click timing
+V2 transforms this from **"synthetic email data"** into **"SendFlowr-native training data"**.
 
-4. **Feature Engineering**
-   - Minute-level curves should be smooth
-   - Personas should be detectable
-   - Recency/frequency should correlate
+Now you can train:
+- ✅ Latency arbitrage (the core value prop!)
+- ✅ Suppression logic
+- ✅ Acceleration logic  
+- ✅ Fatigue modeling
+- ✅ Confidence gating
 
-## Alternatives
-
-If synthetic data isn't sufficient:
-
-1. **Use real production data** (with privacy measures)
-2. **Augment with GANs** (generative models)
-3. **Transfer learning** from similar domains
-4. **Start with simple heuristics** (rule-based) then learn
-
-## Example Output
-
-```
-🌸 Generating synthetic data for 350 users
-📅 Date range: 2025-10-01 to 2026-01-10 (101 days)
-
-📊 2025-10-01: 1,234 events | Total: 1,234
-📊 2025-10-07: 1,189 events | Total: 8,456
-📊 2025-11-01: 1,298 events | Total: 45,123
-...
-✅ Generated 543,210 total events
-📧 Avg per user: 1,552 events
-
-👥 Users by persona:
-  morning_person      : 50 users
-  evening_person      : 50 users
-  night_owl           : 30 users
-  ...
-```
+This is **production-ready ML training data**. 🚀

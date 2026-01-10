@@ -10,15 +10,18 @@ public class ConnectorController : ControllerBase
 {
     private readonly IEspConnector _connector;
     private readonly IEventPublisher _eventPublisher;
+    private readonly IIdentityResolutionService _identityResolution;
     private readonly ILogger<ConnectorController> _logger;
 
     public ConnectorController(
         IEspConnector connector,
         IEventPublisher eventPublisher,
+        IIdentityResolutionService identityResolution,
         ILogger<ConnectorController> logger)
     {
         _connector = connector;
         _eventPublisher = eventPublisher;
+        _identityResolution = identityResolution;
         _logger = logger;
     }
 
@@ -61,7 +64,15 @@ public class ConnectorController : ControllerBase
             var eventList = events.ToList();
             foreach (var evt in eventList)
             {
-                await _eventPublisher.PublishAsync("email-events", evt.RecipientId, evt);
+                var plainEmail = evt.RecipientEmail;  // Keep original for resolution
+                
+                var universalId = await _identityResolution.ResolveIdentityAsync(
+                    email: plainEmail,
+                    klaviyoId: evt.Metadata?.GetValueOrDefault("klaviyo_profile_id")?.ToString());
+                
+                evt.UniversalId = universalId;
+                evt.RecipientEmail = _identityResolution.HashEmail(plainEmail);  // Hash before publishing
+                await _eventPublisher.PublishAsync("email-events", evt.UniversalId, evt);
             }
 
             _logger.LogInformation("Backfilled {Count} events since {Since}", eventList.Count, since);

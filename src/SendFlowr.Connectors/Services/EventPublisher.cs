@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Confluent.Kafka;
 
 namespace SendFlowr.Connectors.Services;
@@ -11,6 +12,7 @@ public class KafkaEventPublisher : IEventPublisher, IDisposable
 {
     private readonly IProducer<string, string> _producer;
     private readonly ILogger<KafkaEventPublisher> _logger;
+    private readonly JsonSerializerOptions _serializerOptions;
 
     public KafkaEventPublisher(IConfiguration configuration, ILogger<KafkaEventPublisher> logger)
     {
@@ -25,13 +27,21 @@ public class KafkaEventPublisher : IEventPublisher, IDisposable
         };
 
         _producer = new ProducerBuilder<string, string>(config).Build();
+
+        _serializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+            DictionaryKeyPolicy = JsonNamingPolicy.SnakeCaseLower,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+            WriteIndented = false
+        };
     }
 
     public async Task PublishAsync<T>(string topic, string key, T value)
     {
         try
         {
-            var json = System.Text.Json.JsonSerializer.Serialize(value);
+            var json = JsonSerializer.Serialize(value, _serializerOptions);
             var message = new Message<string, string>
             {
                 Key = key,
