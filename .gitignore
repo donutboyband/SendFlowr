@@ -59,6 +59,4 @@ models/
 # Tests
 tests/
 
-docker-compose.yml
-
 READMEBACKUP.md
