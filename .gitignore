@@ -50,13 +50,13 @@ logs/
 *.log
 
 # Docs and Spec
-/docs/
-/LLM-ref/
+docs/
+LLM-ref/
 
 # Generated models
-/models/
+models/
 
 # Tests
-/tests/
+tests/
 
-/docker-compose.yml
+docker-compose.yml
