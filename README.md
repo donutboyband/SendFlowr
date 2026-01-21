@@ -10,9 +10,9 @@ SendFlowr is a sandbox for:
 - Building APIs with FastAPI (Python)
 - Playing with identity resolution and timing logic
 - Connecting services with Docker Compose
-- Writing a bit of C# for fun (connectors/consumers)
+- C# Connectors for processing incoming events into Canonical Events (connectors/consumers)
 
-The "theme" is email campaign timing and identity stitching, but the real goal was to get hands-on with the tech stack.
+The idea behind Sendflowr is outlined in `/SendFlowr-Why.md`.
 
 ## Why?
 
@@ -60,15 +60,8 @@ Sample response:
 ## Project Structure
 
 - `src/SendFlowr.Inference/` – Python API (FastAPI)
-- `src/SendFlowr.Connectors/` – C# connectors (just for fun)
+- `src/SendFlowr.Connectors/` – C# connectors
 - `schemas/` – SQL and JSON schemas
-- `scripts/` – Helper scripts
-
-## Docs
-
-- [docs/IDENTITY-RESOLUTION.md](docs/IDENTITY-RESOLUTION.md) – Identity resolution notes
-- [LLM-Ref/SendFlowr-Overview.md](LLM-Ref/SendFlowr-Overview.md) – Architecture overview
-- [docs/TESTING.md](docs/TESTING.md) – Testing notes
 
 ## Status
 
