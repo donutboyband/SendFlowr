@@ -1,19 +1,12 @@
-🌸 Why SendFlowr Exists
+# Why SendFlowr 
 
-Email is still one of the highest‑ROI marketing channels, but most brands are leaving money on the table because they send at the wrong time. ESPs offer “send‑time optimization,” but it’s usually just a glorified average — a single hour chosen from historical opens. It’s coarse, opaque, and blind to context.
+SendFlowr is a technical project focused on figuring out the best time to send emails to each person, using real event data and a lot of moving parts. Most email tools just pick a "best hour" based on simple stats for aggregating users into "engagement blocks", but that misses a lot of nuance in how people actually behave.
 
-SendFlowr exists to fix that.
-
-SendFlowr predicts when each individual recipient is most likely to engage, not with a guess or a generic rule, but with a minute‑level probability curve built from real behavioral and contextual signals. Instead of “send at 10 AM,” SendFlowr identifies the exact windows where engagement probability peaks — and adapts in real time as user behavior changes.
-
-This matters because timing isn’t a cosmetic tweak. It’s a multiplier.
-A small lift in opens or clicks compounds across every campaign, every segment, every lifecycle flow. Better timing means more revenue, stronger deliverability, and fewer wasted sends.
-
-SendFlowr gives marketers something they’ve never had before:
-a precise, data‑driven understanding of when each person is ready to engage.
-
-It’s not an ESP replacement — it’s the intelligence layer ESPs don’t have.
-A plug‑in brain that makes every send smarter.
-
-With SendFlowr, brands stop guessing and start sending with intention.
-They reach people at the right moment, every time — and the results speak for themselves.
+SendFlowr tries to:
+- Tracks user activity from webhook integrations at a minute-by-minute level, not just by the hour or day
+- Builds probability curves for engagement based on real events (opens, clicks, site visits, etc.)
+- Updates its predictions in real time as new data comes in
+- Handles identity resolution by stitching together emails, phone numbers, and various platform IDs
+- Uses Kafka for real-time event streaming and ClickHouse for fast analytics
+- Connects multiple services (Python, C#, databases) with Docker Compose
+- Uses ML to predict latency per-platform (to calculate a "trigger offset" to land an email at an exact moment)
