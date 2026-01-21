@@ -2,6 +2,12 @@
 SendFlowr Timing Layer API
 Clean layered architecture: Controllers → Services → Repositories
 """
+from pathlib import Path
+import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s %(name)s %(message)s')
+logger = logging.getLogger('sendflowr')
+
 from fastapi import FastAPI
 from scalar_fastapi import get_scalar_api_reference
 from models.requests import TimingRequest, LegacyPredictionRequest
@@ -58,7 +64,18 @@ identity_resolver = IdentityResolver(identity_repo)
 
 # Feature and timing services
 feature_service = FeatureService(event_repo, feature_repo)
-timing_service = TimingService(feature_service, identity_resolver, feature_repo, explanation_repo)
+
+# Load trained latency model if available
+import os
+BASE_DIR = Path(__file__).resolve().parent
+LATENCY_MODEL_PATH = os.getenv('LATENCY_MODEL_PATH', str(BASE_DIR / 'models/latency_model.pkl'))
+timing_service = TimingService(
+    feature_service, 
+    identity_resolver, 
+    feature_repo, 
+    explanation_repo,
+    latency_model_path=LATENCY_MODEL_PATH if os.path.exists(LATENCY_MODEL_PATH) else None
+)
 
 controller = TimingController(timing_service, feature_service)
 
@@ -80,7 +97,7 @@ def root():
         "endpoints": {
             "timing_decision": "/timing-decision (primary)",
             "predict": "/predict (legacy STO fallback)",
-            "features": "/features/{recipient_id}",
+            "features": "/features/{universal_id}",
             "compute_features": "/compute-features",
             "health": "/health"
         }
@@ -135,6 +152,8 @@ def health_check():
          TimingDecision object per spec.json schema
          """)
 def generate_timing_decision(request: TimingRequest):
+    logger.debug("[API] /timing-decision handler reached")
+    print("[API] /timing-decision handler reached (print)")
     """
     Primary endpoint: Generate timing decision per spec.json
     
@@ -163,22 +182,22 @@ def legacy_predict(request: LegacyPredictionRequest):
     return controller.legacy_predict(request)
 
 
-@app.get("/features/{recipient_id}",
+@app.get("/features/{universal_id}",
         tags=["Features"],
         summary="Get computed features",
-        description="Retrieve cached minute-level features for a recipient")
-def get_features(recipient_id: str):
+        description="Retrieve cached minute-level features for a user by Universal ID")
+def get_features(universal_id: str):
     """Get cached features (v2 minute-level)"""
-    return controller.get_features(recipient_id)
+    return controller.get_features(universal_id)
 
 
-@app.post("/compute-features/{recipient_id}",
+@app.post("/compute-features/{universal_id}",
          tags=["Features"],
          summary="Compute features on-demand",
          description="Force recomputation of features for a specific user")
-def compute_features_for_user(recipient_id: str):
+def compute_features_for_user(universal_id: str):
     """Compute features on-demand for a specific user"""
-    return controller.compute_features(recipient_id)
+    return controller.compute_features(universal_id)
 
 
 @app.post("/compute-features",

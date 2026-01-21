@@ -2,11 +2,11 @@
 
 ## Overview
 
-SendFlowr implements a **Universal Identity Resolution** system per LLM-spec.md §7. All timing decisions reference a single **Universal SendFlowr ID** that stitches together identity signals from multiple sources.
+SendFlowr implements a **Universal Identity Resolution**. All timing decisions reference a single **Universal SendFlowr ID** that stitches together identity signals from multiple sources.
 
 ## Architecture
 
-### Per LLM-spec.md §7: Identity Resolution Contract
+### Identity Resolution Contract
 
 **All signals must resolve to a Universal SendFlowr ID.**
 

@@ -89,7 +89,7 @@ See **[docs/IDENTITY-RESOLUTION.md](docs/IDENTITY-RESOLUTION.md)** for full docu
 - [x] Click-based engagement curves
 - [x] Latency-aware trigger computation
 - [x] Confidence scoring (entropy-based)
-- [x] Spec compliance (100% per LLM-Ref)
+- [x] Spec compliance 
 
 ### ✅ Phase 6: Identity Resolution (COMPLETE)
 - [x] Universal SendFlowr ID generation

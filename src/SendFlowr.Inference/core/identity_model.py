@@ -1,7 +1,7 @@
 """
 Identity Resolution Domain Models
 
-Per LLM-spec.md §7: Identity Resolution
+Identity Resolution
 - Universal SendFlowr ID for all decisions
 - Deterministic keys: hashed email, phone
 - Probabilistic keys: ESP IDs, customer IDs, device signatures

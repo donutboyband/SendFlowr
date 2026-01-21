@@ -1,6 +1,6 @@
 #!/bin/bash
 # Initialize ClickHouse with all SendFlowr tables
-# Including identity resolution tables per LLM-spec.md §7
+# Including identity resolution tables 
 
 set -e
 

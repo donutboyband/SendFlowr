@@ -16,6 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY src/SendFlowr.Inference/ .
 
+# Copy trained ML models
+COPY models/ /app/models/
+
 EXPOSE 8001
 
 ENV PYTHONUNBUFFERED=1

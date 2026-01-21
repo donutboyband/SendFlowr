@@ -32,10 +32,11 @@ class FeatureService:
     def get_or_compute_features(self, universal_id: str) -> Dict:
         """Get cached features or compute on-demand"""
         features = self.feature_repo.get_features(universal_id)
+        print(f"[FeatureService] Loaded cached features for {universal_id}: {features}")
         
         if not features or features.get('version') != '2.0_minute_level':
             features = self.compute_features(universal_id)
-            self.feature_repo.store_features(universal_id, features)
+            print(f"[FeatureService] Computed new features for {universal_id}: {features}")
         
         return features
     

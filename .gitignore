@@ -48,3 +48,15 @@ Thumbs.db
 # Logs
 logs/
 *.log
+
+# Docs and Spec
+/docs/
+/LLM-ref/
+
+# Generated models
+/models/
+
+# Tests
+/tests/
+
+/docker-compose.yml

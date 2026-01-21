@@ -19,7 +19,7 @@ class TimingService:
     """
     Service for generating timing decisions.
     
-    Per LLM-spec.md §7: All decisions MUST reference a Universal SendFlowr ID.
+    All decisions MUST reference a Universal SendFlowr ID.
     This service resolves identities before making timing decisions.
     """
     
@@ -27,18 +27,19 @@ class TimingService:
                  feature_service: FeatureService,
                  identity_resolver: IdentityResolver,
                  feature_repo: FeatureRepository,
-                 explanation_repo: ExplanationRepository):
+                 explanation_repo: ExplanationRepository,
+                 latency_model_path: Optional[str] = None):
         self.feature_service = feature_service
         self.identity_resolver = identity_resolver
         self.feature_repo = feature_repo
         self.explanation_repo = explanation_repo
-        self.ml_models = MLModels()
+        self.ml_models = MLModels(latency_model_path=latency_model_path)
     
     def generate_timing_decision(self, request: TimingRequest) -> TimingDecision:
         """
         Generate timing decision per spec.json
         
-        Per LLM-spec.md §7: Resolves identity to Universal ID before decision.
+        Resolves identity to Universal ID before decision.
         Returns TimingDecision with latency-compensated trigger time
         """
         # Step 1: Resolve identity to Universal SendFlowr ID
@@ -155,12 +156,21 @@ class TimingService:
             slots_ahead = (best_slot - reference_slot) % MINUTES_PER_WEEK
             target_datetime = reference_time + timedelta(minutes=slots_ahead)
         
-        # Latency prediction (override default if possible)
+        # Latency prediction (channel-agnostic, per ML-SPEC.md §1)
+        # Uses trained model if available, falls back to heuristic
+        import sys
         predicted_latency = self.ml_models.predict_latency(
-            esp=None,
+            esp=request.provider,  # 'klaviyo', 'sendgrid', 'twilio', etc.
             event_time=now,
+            payload_bytes=request.payload_size_bytes,
+            queue_depth=request.queue_depth_estimate,
+            campaign_type=request.campaign_type,
             default_latency_seconds=request.latency_estimate_seconds
         )
+        
+        sys.stdout.flush()
+        sys.stderr.write(f"🔍 Latency: provider={request.provider}, predicted={predicted_latency}s\n")
+        sys.stderr.flush()
         
         # Calculate trigger time accounting for latency
         trigger_datetime = target_datetime - timedelta(seconds=predicted_latency)
@@ -171,6 +181,11 @@ class TimingService:
             trigger_datetime = target_datetime - timedelta(seconds=predicted_latency)
         
         # Generate decision
+        # DEBUG: Log the actual predicted latency value
+        import sys
+        sys.stderr.write(f"🔍 Creating TimingDecision with latency={predicted_latency}s (type={type(predicted_latency)})\n")
+        sys.stderr.flush()
+        
         decision = TimingDecision(
             decision_id=str(uuid.uuid4()),
             universal_id=universal_id,  # ← Use resolved Universal ID
@@ -226,7 +241,7 @@ class TimingService:
         """
         Resolve identity to Universal SendFlowr ID.
         
-        Per LLM-spec.md §7: All decisions MUST reference a Universal SendFlowr ID.
+        All decisions MUST reference a Universal SendFlowr ID.
         
         Priority:
         1. If universal_id provided → use it directly (already resolved)

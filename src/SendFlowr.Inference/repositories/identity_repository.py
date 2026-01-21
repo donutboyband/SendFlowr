@@ -1,7 +1,7 @@
 """
 Identity Repository - ClickHouse data access for identity resolution
 
-Per LLM-spec.md §7.3: Resolution Rules
+Resolution Rules
 - Merges are idempotent
 - No destructive overwrites
 - Resolution steps must be auditable

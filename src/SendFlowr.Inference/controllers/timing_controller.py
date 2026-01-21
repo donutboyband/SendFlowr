@@ -19,6 +19,9 @@ class TimingController:
     
     def generate_timing_decision(self, request: TimingRequest) -> Dict:
         """POST /timing-decision - Primary endpoint"""
+        import sys
+        sys.stderr.write(f"[CONTROLLER] generate_timing_decision called with request: {request}\n")
+        sys.stderr.flush()
         try:
             decision = self.timing_service.generate_timing_decision(request)
             return decision.to_dict()
@@ -51,14 +54,14 @@ class TimingController:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to generate prediction: {str(e)}")
     
-    def get_features(self, recipient_id: str) -> Dict:
-        """GET /features/{recipient_id}"""
+    def get_features(self, universal_id: str) -> Dict:
+        """GET /features/{universal_id}"""
         try:
-            features = self.feature_service.get_or_compute_features(recipient_id)
+            features = self.feature_service.get_or_compute_features(universal_id)
             
             # Don't return full 10k array, just metadata
             return {
-                "recipient_id": features['recipient_id'],
+                "universal_id": features['universal_id'],
                 "version": features['version'],
                 "curve_confidence": features['curve_confidence'],
                 "peak_windows": features['peak_windows'],
@@ -68,15 +71,15 @@ class TimingController:
                 "computed_at": features['computed_at']
             }
         except Exception as e:
-            raise HTTPException(status_code=404, detail=f"No features found for {recipient_id}: {str(e)}")
+            raise HTTPException(status_code=404, detail=f"No features found for {universal_id}: {str(e)}")
     
-    def compute_features(self, recipient_id: str = None) -> Dict:
+    def compute_features(self, universal_id: str = None) -> Dict:
         """POST /compute-features - Compute features on-demand"""
         try:
-            if recipient_id:
-                features = self.feature_service.compute_features(recipient_id)
-                self.feature_service.feature_repo.store_features(recipient_id, features)
-                return {"status": "computed", "recipient_id": recipient_id}
+            if universal_id:
+                features = self.feature_service.compute_features(universal_id)
+                self.feature_service.feature_repo.store_features(universal_id, features)
+                return {"status": "computed", "universal_id": universal_id}
             else:
                 # Compute for all users
                 self.feature_service.compute_all_users()

@@ -1,5 +1,5 @@
 -- ClickHouse Identity Resolution Tables
--- Per LLM-spec.md §7: Identity Resolution
+-- Identity Resolution
 
 -- Database setup
 CREATE DATABASE IF NOT EXISTS sendflowr;
@@ -27,7 +27,7 @@ ON sendflowr.identity_graph (identifier_b)
 TYPE bloom_filter GRANULARITY 1;
 
 -- 2. Identity Audit Log: Tracks all resolution decisions
---    Per LLM-spec §7.3: "Resolution steps MUST be auditable"
+-- "Resolution steps MUST be auditable"
 CREATE TABLE IF NOT EXISTS sendflowr.identity_audit_log
 (
     resolution_id String,                      -- UUID for this resolution attempt

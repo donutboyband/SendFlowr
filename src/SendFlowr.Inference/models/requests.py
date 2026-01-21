@@ -10,7 +10,7 @@ class TimingRequest(BaseModel):
     """
     Request for timing decision with identity resolution.
     
-    Per LLM-spec.md §7: Identity Resolution
+    Identity Resolution
     - Accepts multiple identity keys (email, phone, ESP IDs, etc.)
     - System resolves to Universal SendFlowr ID before timing decision
     - Deterministic keys: email, phone
@@ -50,6 +50,33 @@ class TimingRequest(BaseModel):
         example="esp_user_999"
     )
     
+    # Channel context for latency prediction
+    channel: Optional[str] = Field(
+        None,
+        description="Delivery channel: email, sms, push (used for latency prediction)",
+        example="email"
+    )
+    provider: Optional[str] = Field(
+        None,
+        description="Execution provider: klaviyo, sendgrid, twilio, etc.",
+        example="klaviyo"
+    )
+    campaign_type: Optional[str] = Field(
+        None,
+        description="Campaign classification (transactional, promotional, etc.)",
+        example="promotional"
+    )
+    payload_size_bytes: Optional[int] = Field(
+        None,
+        description="Approximate payload size in bytes (used for latency estimation)",
+        example=2048
+    )
+    queue_depth_estimate: Optional[int] = Field(
+        None,
+        description="Estimated queue depth observed on the provider",
+        example=1200
+    )
+    
     # Timing constraints
     send_after: Optional[datetime] = Field(
         None, 
@@ -63,7 +90,7 @@ class TimingRequest(BaseModel):
     )
     latency_estimate_seconds: float = Field(
         300.0, 
-        description="Estimated ESP latency in seconds",
+        description="Default latency estimate (overridden by ML model if trained)",
         example=300.0,
         ge=0,
         le=3600
@@ -72,11 +99,15 @@ class TimingRequest(BaseModel):
     class Config:
         schema_extra = {
             "example": {
-                "email": "user@example.com",
-                "phone": "+14155551234",
-                "klaviyo_id": "k_abc123",
-                "send_after": "2026-01-10T00:00:00Z",
-                "send_before": "2026-01-17T00:00:00Z",
+            "email": "user@example.com",
+            "phone": "+14155551234",
+            "channel": "email",
+            "provider": "klaviyo",
+            "campaign_type": "promotional",
+            "payload_size_bytes": 2048,
+            "queue_depth_estimate": 1500,
+            "send_after": "2026-01-10T00:00:00Z",
+            "send_before": "2026-01-17T00:00:00Z",
                 "latency_estimate_seconds": 300
             }
         }
@@ -94,4 +125,3 @@ class LegacyPredictionRequest(BaseModel):
                 "hours_ahead": 24
             }
         }
-

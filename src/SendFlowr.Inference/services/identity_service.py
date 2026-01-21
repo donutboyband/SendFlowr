@@ -1,7 +1,7 @@
 """
 Identity Resolution Service
 
-Per LLM-spec.md §7: Identity Resolution
+Identity Resolution
 - All decisions MUST reference a Universal SendFlowr ID
 - Deterministic matching on email_hash, phone_number
 - Probabilistic matching on ESP IDs, customer IDs, device signatures

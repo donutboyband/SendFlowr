@@ -11,8 +11,7 @@ Enhanced with SendFlowr-specific training signals:
 6. Campaign fatigue modeling
 7. Confidence drift over time
 8. **Piped through Connector API for production-like flow**
-
-This generates data that trains the FULL Timing Layer, not just engagement curves.
+9. **UUIDv7 for time-ordered event IDs**
 """
 
 import random
@@ -23,6 +22,34 @@ import uuid
 import numpy as np
 import requests
 import time
+
+# UUIDv7 implementation (time-ordered)
+def uuid7() -> str:
+    """Generate UUIDv7 (time-ordered UUID for better database performance)"""
+    timestamp_ms = int(datetime.utcnow().timestamp() * 1000)
+    
+    # Create 16 bytes for UUID
+    uuid_bytes = bytearray(16)
+    
+    # Timestamp (48 bits = 6 bytes) in big-endian
+    uuid_bytes[0] = (timestamp_ms >> 40) & 0xFF
+    uuid_bytes[1] = (timestamp_ms >> 32) & 0xFF
+    uuid_bytes[2] = (timestamp_ms >> 24) & 0xFF
+    uuid_bytes[3] = (timestamp_ms >> 16) & 0xFF
+    uuid_bytes[4] = (timestamp_ms >> 8) & 0xFF
+    uuid_bytes[5] = timestamp_ms & 0xFF
+    
+    # Random data for rest
+    random_bytes = random.randbytes(10)
+    uuid_bytes[6:16] = random_bytes
+    
+    # Set version (4 bits) to 7
+    uuid_bytes[6] = (uuid_bytes[6] & 0x0F) | 0x70
+    
+    # Set variant (2 bits) to RFC 4122
+    uuid_bytes[8] = (uuid_bytes[8] & 0x3F) | 0x80
+    
+    return str(uuid.UUID(bytes=bytes(uuid_bytes)))
 
 # Configuration
 CONNECTOR_API_URL = 'http://localhost:5215'  # Connector API (handles identity resolution)
@@ -124,13 +151,31 @@ USER_PERSONAS = {
     }
 }
 
+# Multi-channel providers with realistic latency characteristics
+PROVIDERS = [
+    # Email providers
+    {'channel': 'email', 'provider': 'klaviyo', 'weight': 0.35, 'base_latency_mean': 2.5, 'base_latency_sigma': 0.4},
+    {'channel': 'email', 'provider': 'sendgrid', 'weight': 0.25, 'base_latency_mean': 2.3, 'base_latency_sigma': 0.35},
+    {'channel': 'email', 'provider': 'mailchimp', 'weight': 0.15, 'base_latency_mean': 2.7, 'base_latency_sigma': 0.45},
+    
+    # SMS providers (faster delivery, less congestion)
+    {'channel': 'sms', 'provider': 'twilio', 'weight': 0.15, 'base_latency_mean': 0.5, 'base_latency_sigma': 0.2},
+    {'channel': 'sms', 'provider': 'messagebird', 'weight': 0.05, 'base_latency_mean': 0.6, 'base_latency_sigma': 0.25},
+    
+    # Push providers (fastest, minimal queue)
+    {'channel': 'push', 'provider': 'onesignal', 'weight': 0.03, 'base_latency_mean': 0.1, 'base_latency_sigma': 0.1},
+    {'channel': 'push', 'provider': 'firebase', 'weight': 0.02, 'base_latency_mean': 0.15, 'base_latency_sigma': 0.12},
+]
+
 CAMPAIGNS = [
-    {'id': 'welcome_series', 'freq_per_week': 0.5},
-    {'id': 'newsletter', 'freq_per_week': 1.0},
-    {'id': 'promotion', 'freq_per_week': 2.0},
-    {'id': 'abandoned_cart', 'freq_per_week': 0.3},
-    {'id': 'product_reco', 'freq_per_week': 1.5},
-    {'id': 'reengagement', 'freq_per_week': 0.2},
+    {'id': 'welcome_series', 'freq_per_week': 0.5, 'type': 'transactional', 'avg_size_kb': 45, 'channels': ['email', 'sms']},
+    {'id': 'newsletter', 'freq_per_week': 1.0, 'type': 'promotional', 'avg_size_kb': 120, 'channels': ['email']},
+    {'id': 'promotion', 'freq_per_week': 2.0, 'type': 'promotional', 'avg_size_kb': 85, 'channels': ['email', 'sms', 'push']},
+    {'id': 'abandoned_cart', 'freq_per_week': 0.3, 'type': 'transactional', 'avg_size_kb': 55, 'channels': ['email', 'sms']},
+    {'id': 'product_reco', 'freq_per_week': 1.5, 'type': 'promotional', 'avg_size_kb': 95, 'channels': ['email', 'push']},
+    {'id': 'reengagement', 'freq_per_week': 0.2, 'type': 'promotional', 'avg_size_kb': 70, 'channels': ['email']},
+    {'id': 'flash_sale', 'freq_per_week': 0.5, 'type': 'promotional', 'avg_size_kb': 60, 'channels': ['sms', 'push']},
+    {'id': 'order_confirmation', 'freq_per_week': 0.4, 'type': 'transactional', 'avg_size_kb': 40, 'channels': ['email', 'sms']},
 ]
 
 
@@ -144,11 +189,17 @@ class EnhancedSyntheticDataGenerator:
     
     def _check_connector(self) -> bool:
         """Check if Connector API is available"""
-        try:
-            response = requests.get(f"{CONNECTOR_API_URL}/swagger/index.html", timeout=2)
-            return response.status_code == 200
-        except:
-            return False
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(f"{CONNECTOR_API_URL}/scalar/v1", timeout=3)
+                if response.status_code == 200:
+                    return True
+            except:
+                if attempt < max_retries - 1:
+                    print(f"⏳ Waiting for Connector API (attempt {attempt + 1}/{max_retries})...")
+                    time.sleep(2)
+        return False
     
     def _publish_event_via_connector(self, event_data: Dict) -> bool:
         """
@@ -189,28 +240,137 @@ class EnhancedSyntheticDataGenerator:
         
         return users
     
-    def _sample_esp_latency(self, send_time: datetime) -> int:
+    def _estimate_queue_depth(self, send_time: datetime, channel: str = 'email') -> int:
         """
-        NEW: Realistic ESP latency with congestion modeling
+        Estimate queue depth at provider for ML training (correlates with latency)
         
-        This trains latency arbitrage!
+        Channel-specific: email has more congestion than SMS/push
+        Features: hour_of_day, minute, day_of_week, channel
+        Returns: estimated messages in queue (0-10000)
         """
-        # Base latency: log-normal distribution (~12s median)
-        base = np.random.lognormal(mean=2.5, sigma=0.4)
+        hour = send_time.hour
+        minute = send_time.minute
+        day_of_week = send_time.weekday()
         
-        # Top-of-hour congestion (everyone sends at :00)
-        if send_time.minute in [0, 1, 2]:
-            base *= random.uniform(3.0, 6.0)
+        # Base queue depth varies by channel
+        if channel == 'email':
+            base_depth = 500
+        elif channel == 'sms':
+            base_depth = 100  # Less batch congestion for SMS
+        else:  # push
+            base_depth = 50   # Minimal queue for push
         
-        # Morning/evening batch pressure
-        if send_time.hour in [8, 9, 18, 19]:
-            base *= random.uniform(1.5, 2.5)
+        # Top-of-hour traffic jam (primarily email)
+        if minute in [0, 1, 2]:
+            if channel == 'email':
+                base_depth *= random.uniform(8, 15)  # Massive spike for email
+            else:
+                base_depth *= random.uniform(2, 4)   # Smaller spike for SMS/push
+        elif minute in [15, 30, 45]:
+            base_depth *= random.uniform(2, 4)
         
-        # Weekend is faster
-        if send_time.weekday() in [5, 6]:
+        # Morning/evening rush hours
+        if hour in [8, 9, 18, 19]:
+            base_depth *= random.uniform(2, 3.5)
+        
+        # Weekend quieter
+        if day_of_week in [5, 6]:
+            base_depth *= 0.4
+        
+        # Late night very quiet
+        if hour in [0, 1, 2, 3, 4, 5]:
+            base_depth *= 0.2
+        
+        return int(min(base_depth, 10000))
+    
+    def _sample_esp_latency(self, send_time: datetime, payload_size_bytes: int = None, queue_depth: int = None, provider_config: dict = None) -> int:
+        """
+        Realistic provider latency with congestion modeling (ML TRAINING DATA)
+        
+        This generates realistic latency telemetry for training the latency prediction model.
+        Features used: hour_of_day, minute, day_of_week, payload_size, queue_depth, congestion patterns, channel
+        
+        Per ML-SPEC.md §1: Latency Prediction Model
+        
+        Args:
+            provider_config: dict with 'channel', 'base_latency_mean', 'base_latency_sigma'
+        
+        Returns: latency in seconds
+        """
+        hour = send_time.hour
+        minute = send_time.minute
+        day_of_week = send_time.weekday()
+        
+        # Channel-specific base latency
+        if provider_config:
+            mean = provider_config.get('base_latency_mean', 2.5)
+            sigma = provider_config.get('base_latency_sigma', 0.4)
+            channel = provider_config.get('channel', 'email')
+        else:
+            mean, sigma, channel = 2.5, 0.4, 'email'
+        
+        # Base latency: log-normal distribution
+        # Email: ~12s median, SMS: ~1-2s, Push: <1s
+        base = np.random.lognormal(mean=mean, sigma=sigma)
+        
+        # Feature: Top-of-hour congestion (primarily affects email)
+        # This is a CRITICAL training signal for latency arbitrage
+        if minute in [0, 1, 2]:
+            if channel == 'email':
+                congestion_multiplier = random.uniform(3.0, 6.0)  # Heavy email congestion
+            else:
+                congestion_multiplier = random.uniform(1.2, 1.5)  # Light SMS/push congestion
+            base *= congestion_multiplier
+        elif minute in [15, 30, 45]:  # Quarter-hour bumps
+            base *= random.uniform(1.3, 1.8)
+        
+        # Feature: Morning/evening batch pressure (mainly email)
+        if hour in [8, 9, 18, 19]:
+            if channel == 'email':
+                base *= random.uniform(1.5, 2.5)
+            else:
+                base *= random.uniform(1.1, 1.3)
+        
+        # Feature: Weekend is faster (less commercial traffic)
+        if day_of_week in [5, 6]:
             base *= 0.7
         
-        return int(min(base, 900))  # Cap at 15 minutes
+        # Feature: Late night is fastest
+        if hour in [0, 1, 2, 3, 4, 5]:
+            base *= 0.5
+        
+        # Feature: Payload size (larger emails take longer to process/transmit)
+        # SMS and push have minimal payload impact
+        if payload_size_bytes and channel == 'email':
+            size_kb = payload_size_bytes / 1024
+            # Heavy emails (>200KB) add processing time
+            if size_kb > 200:
+                base *= random.uniform(1.2, 1.5)
+            elif size_kb > 100:
+                base *= random.uniform(1.05, 1.15)
+        
+        # Feature: Queue depth (more messages = more delay)
+        if queue_depth:
+            if queue_depth > 5000:
+                base *= random.uniform(1.8, 2.5)
+            elif queue_depth > 2000:
+                base *= random.uniform(1.3, 1.7)
+            elif queue_depth > 1000:
+                base *= random.uniform(1.1, 1.3)
+        
+        # Add realistic jitter (network variance)
+        jitter = random.uniform(0.9, 1.1)
+        final_latency = base * jitter
+        
+        # Cap: email 15min, SMS 2min, push 30sec
+        if channel == 'email':
+            cap = 900
+        elif channel == 'sms':
+            cap = 120
+        else:  # push
+            cap = 30
+        
+        return int(min(final_latency, cap))
     
     def _should_engage_at_time(self, user: Dict, dt: datetime) -> Tuple[bool, float]:
         """
@@ -393,7 +553,7 @@ class EnhancedSyntheticDataGenerator:
         config['open_rate'] = max(0.05, min(0.70, config['open_rate']))
     
     def _generate_event_sequence(self, user: Dict, campaign: Dict, send_time: datetime):
-        """Generate realistic event sequence with SendFlowr training signals"""
+        """Generate realistic event sequence with SendFlowr training signals (multi-channel)"""
         config = user['config']
         user_id = user['id']
         
@@ -410,42 +570,80 @@ class EnhancedSyntheticDataGenerator:
         # Track this send for fatigue
         self.user_state[user_id]['recent_sends'].append(send_time)
         
+        # Select channel and provider for this campaign
+        available_channels = campaign.get('channels', ['email'])
+        channel = random.choice(available_channels)
+        
+        # Pick provider for this channel (weighted random)
+        channel_providers = [p for p in PROVIDERS if p['channel'] == channel]
+        if not channel_providers:
+            channel_providers = [p for p in PROVIDERS if p['channel'] == 'email']  # Fallback
+        
+        weights = [p['weight'] for p in channel_providers]
+        provider_config = random.choices(channel_providers, weights=weights, k=1)[0]
+        provider = provider_config['provider']
+        
         # Base event template (matching CanonicalEvent schema)
         campaign_name = campaign['id'].replace('_', ' ').title()
         base_event = {
-            'esp': 'klaviyo',
+            'esp': provider,  # Now multi-channel: klaviyo, twilio, onesignal, etc.
             'recipient_id': user_id,
             'recipient_email': user['email'],
             'campaign_id': campaign['id'],
             'campaign_name': campaign_name,
             'message_id': f"msg_{uuid.uuid4().hex[:12]}",
-            'subject': f"{campaign_name} - Special Offer",
-            'metadata': {'persona': user['persona'], 'test_data': True},
+            'subject': f"{campaign_name} - Special Offer" if channel == 'email' else campaign_name,
+            'metadata': {
+                'persona': user['persona'], 
+                'test_data': True,
+                'channel': channel,  # Track channel for analytics
+                'provider': provider
+            },
             'ingested_at': datetime.utcnow().isoformat()
         }
         
+        # Calculate ML training features (per ML-SPEC.md §1)
+        campaign_type = campaign.get('type', 'promotional')
+        avg_size_kb = campaign.get('avg_size_kb', 80) if channel == 'email' else 1  # SMS/push tiny
+        # Add realistic variance to payload size
+        payload_size_bytes = int((avg_size_kb * 1024) * random.uniform(0.85, 1.15))
+        queue_depth = self._estimate_queue_depth(send_time, channel)
+        
         # Sent event
         sent_event = base_event.copy()
+        sent_event['metadata'] = base_event['metadata'].copy()  # Deep copy metadata
         sent_event.update({
-            'event_id': str(uuid.uuid4()),
+            'event_id': uuid7(),  # UUIDv7 - time-ordered
             'event_type': 'sent',
             'timestamp': send_time.isoformat()
         })
+        # Add campaign metadata for training
+        sent_event['metadata']['campaign_type'] = campaign_type
+        sent_event['metadata']['payload_size_bytes'] = payload_size_bytes
         yield sent_event
         
-        # Delivered with realistic latency
+        # Delivered with realistic latency (channel-aware)
         if random.random() < 0.99:
-            latency_seconds = self._sample_esp_latency(send_time)
+            latency_seconds = self._sample_esp_latency(send_time, payload_size_bytes, queue_depth, provider_config)
             delivered_time = send_time + timedelta(seconds=latency_seconds)
             
             delivered_event = base_event.copy()
+            delivered_event['metadata'] = base_event['metadata'].copy()  # Deep copy metadata
             delivered_event.update({
-                'event_id': str(uuid.uuid4()),
+                'event_id': uuid7(),  # UUIDv7 - time-ordered
                 'event_type': 'delivered',
                 'timestamp': delivered_time.isoformat()
             })
-            # Store latency in metadata (ClickHouse stores it there)
+            # Store ML training features in metadata (per ML-SPEC.md §1: Latency Prediction)
+            # send_time = when the message was sent (from sent event timestamp)
             delivered_event['metadata']['latency_seconds'] = latency_seconds
+            delivered_event['metadata']['send_time'] = send_time.isoformat()
+            delivered_event['metadata']['hour_of_day'] = send_time.hour
+            delivered_event['metadata']['minute'] = send_time.minute
+            delivered_event['metadata']['day_of_week'] = send_time.weekday()
+            delivered_event['metadata']['campaign_type'] = campaign_type
+            delivered_event['metadata']['payload_size_bytes'] = payload_size_bytes
+            delivered_event['metadata']['queue_depth_estimate'] = queue_depth
             yield delivered_event
             
             # CRITICAL: Engagement based on DELIVERY time, not send time
@@ -464,7 +662,7 @@ class EnhancedSyntheticDataGenerator:
                 
                 opened_event = base_event.copy()
                 opened_event.update({
-                    'event_id': str(uuid.uuid4()),
+                    'event_id': uuid7(),  # UUIDv7 - time-ordered
                     'event_type': 'opened',
                     'timestamp': open_time.isoformat()
                 })
@@ -478,7 +676,7 @@ class EnhancedSyntheticDataGenerator:
                     
                     clicked_event = base_event.copy()
                     clicked_event.update({
-                        'event_id': str(uuid.uuid4()),
+                        'event_id': uuid7(),  # UUIDv7 - time-ordered
                         'event_type': 'clicked',
                         'timestamp': click_time.isoformat()
                     })

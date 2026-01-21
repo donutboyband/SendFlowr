@@ -15,8 +15,19 @@ All SendFlowr services are now containerized for easy deployment and development
 ## Quick Start
 
 ```bash
-# Start all services
+# Start all services with initialization
+./scripts/start-docker.sh
+
+# Or manually:
 docker-compose up -d
+
+# Create Kafka topic (required on first run)
+docker exec sendflowr-kafka kafka-topics --create \
+  --topic email-events \
+  --bootstrap-server localhost:9092 \
+  --partitions 3 \
+  --replication-factor 1 \
+  --if-not-exists
 
 # Check status
 docker-compose ps

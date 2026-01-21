@@ -8,9 +8,11 @@
 
   <ItemGroup>
     <PackageReference Include="Confluent.Kafka" Version="2.13.0" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.8" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="Scalar.AspNetCore" Version="1.2.64" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
+    <PackageReference Include="Uuid7" Version="1.0.0" />
+    <PackageReference Include="UUIDNext" Version="1.0.0" />
   </ItemGroup>
 
 </Project>

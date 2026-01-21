@@ -23,7 +23,7 @@ class EventRepository:
         """
         Get all click timestamps for a user (by Universal ID).
         
-        Per LLM-spec.md §7: All queries use Universal SendFlowr ID.
+         All queries use Universal SendFlowr ID.
         """
         query = """
             SELECT timestamp
@@ -67,7 +67,7 @@ class EventRepository:
         Get contextual signals for hot paths and circuit breakers
         
         Args:
-            universal_id: Universal SendFlowr ID (per LLM-spec §7)
+            universal_id: Universal SendFlowr ID 
         
         Returns: (suppression_rows, hot_path_rows)
         """

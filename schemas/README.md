@@ -1,7 +1,21 @@
 # SendFlowr Database Schemas
 
 This directory contains canonical database schemas for SendFlowr.
-
+## Quick Scripts
+Grab objects to test timing decisions:
+```sql
+SELECT
+  universal_id,
+  max(timestamp) AS last_event_ts,
+  anyLast(esp) AS provider,
+  anyLast(JSONExtractString(metadata, 'channel')) AS channel,
+  anyLast(campaign_type) AS campaign_type,
+  anyLast(payload_size_bytes) AS payload_size_bytes,
+  anyLast(latency_seconds) AS latency_seconds,
+  maxIf(timestamp, event_type = 'delivered') AS last_delivered_ts
+FROM sendflowr.email_events
+GROUP BY universal_id
+```
 ## Schema Files
 
 ### ClickHouse Schemas
@@ -198,7 +212,6 @@ WHERE universal_user_id = 'sf_abc123'  -- Returns all 80 events!
 - Graph traversal (klaviyo_id → email_hash → universal_id)
 - Cross-platform user stitching
 
-**Per LLM-spec.md §7:**
 - Deterministic keys: email_hash, phone_number (weight = 1.0)
 - Probabilistic keys: klaviyo_id, shopify_customer_id, etc. (weight < 1.0)
 
@@ -224,7 +237,6 @@ WHERE universal_user_id = 'sf_abc123'  -- Returns all 80 events!
 - Debugging identity resolution issues
 - Security auditing
 
-**Per LLM-spec.md §7.3:**
 - "Resolution steps MUST be auditable" ✅
 
 ---

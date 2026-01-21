@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using SendFlowr.Connectors.Models;
 using SendFlowr.Connectors.Services;
+using SendFlowr.Connectors.Utilities;
 using System.Text.Json.Serialization;
 
 namespace SendFlowr.Connectors.Controllers;
@@ -46,7 +47,7 @@ public class MockController : ControllerBase
             
             var evt = new CanonicalEvent
             {
-                EventId = $"mock_evt_{Guid.NewGuid():N}",
+                EventId = UuidV7.NewGuid().ToString(),  // UUIDv7 - time-ordered
                 EventType = eventType,
                 Timestamp = DateTime.UtcNow.AddMinutes(-random.Next(0, 10080)), // Random time in last week
                 Esp = EspProviders.Klaviyo,
@@ -54,7 +55,7 @@ public class MockController : ControllerBase
                 RecipientEmail = _identityResolution.HashEmail(email),  // Hash email for privacy
                 CampaignId = campaignId,
                 CampaignName = campaignId.Replace("_", " ").ToUpper(),
-                MessageId = $"msg_{Guid.NewGuid():N}",
+                MessageId = $"msg_{UuidV7.NewGuid():N}",
                 Subject = GenerateSubject(campaignId),
                 ClickUrl = eventType == "clicked" ? "https://example.com/link" : null,
                 UserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)",
@@ -130,7 +131,7 @@ public class MockController : ControllerBase
             
         return new CanonicalEvent
         {
-            EventId = $"mock_evt_{Guid.NewGuid():N}",
+            EventId = UuidV7.NewGuid().ToString(),  // UUIDv7
             EventType = eventType,
             Timestamp = timestamp,
             Esp = EspProviders.Klaviyo,
@@ -164,7 +165,7 @@ public class MockController : ControllerBase
             // Create canonical event with resolved identity and hashed email
             var evt = new CanonicalEvent
             {
-                EventId = request.EventId ?? $"synth_evt_{Guid.NewGuid():N}",
+                EventId = request.EventId ?? UuidV7.NewGuid().ToString(),  // UUIDv7
                 EventType = request.EventType,
                 Timestamp = request.Timestamp,
                 Esp = request.Esp ?? EspProviders.Klaviyo,
