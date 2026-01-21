@@ -1,63 +1,40 @@
 # SendFlowr
 
-**Timing Intelligence Layer for Email Campaigns**
+SendFlowr is a personal project I built to learn about real-time data processing, event streaming, and modern backend tech. It's not a professional app—just a playground for experimenting with things like Kafka, ClickHouse, FastAPI, and some machine learning ideas.
 
-Minute-level precision timing decisions with identity resolution and latency awareness.
+## What is this?
 
-## 🎯 Core Features
+SendFlowr is a sandbox for:
+- Trying out Kafka for real-time event streaming
+- Using ClickHouse for fast analytics on event data
+- Building APIs with FastAPI (Python)
+- Playing with identity resolution and timing logic
+- Connecting services with Docker Compose
+- Writing a bit of C# for fun (connectors/consumers)
 
-✅ **Universal Identity Resolution** - Stitch email, phone, ESP IDs, and customer IDs into a single Universal SendFlowr ID  
-✅ **Minute-Level Precision** - 10,080 minute slots per week (canonical time grid)  
-✅ **Click-Based Modeling** - MPP-resilient engagement signals  
-✅ **Latency-Aware Triggers** - Compensate for ESP delivery delays  
-✅ **Hot Path Detection** - Real-time event boosts (site visits, SMS clicks, product views)  
-✅ **Circuit Breakers** - Automatic suppression for complaints, support tickets, unsubscribes  
-✅ **Explainable Decisions** - Full audit trail and decision explanations  
+The "theme" is email campaign timing and identity stitching, but the real goal was to get hands-on with the tech stack.
 
-## Quick Start
+## Why?
+
+I wanted to:
+- Learn how Kafka works in practice
+- See what ClickHouse is good at
+- Build a FastAPI service from scratch
+- Try out some simple ML for timing decisions
+- Practice wiring up multiple services with Docker
+
+## How to Run
 
 ```bash
-# Start infrastructure
 docker-compose up -d
-
-# Run inference API
+# Then run the Python API:
 cd src/SendFlowr.Inference
 source venv/bin/activate
 python main.py
-
-# API available at:
-# - Swagger UI:  http://localhost:8001/docs
-# - Scalar Docs: http://localhost:8001/scalar
-# - ReDoc:       http://localhost:8001/redoc
+# Docs at http://localhost:8001/docs
 ```
 
-## Architecture
-
-### Layered Design (Clean Architecture)
-- **Controllers** → HTTP request/response handling
-- **Services** → Business logic (timing decisions, identity resolution)
-- **Repositories** → Data access (ClickHouse, Redis)
-
-### Components
-- **Timing Service**: Minute-level timing decisions with latency compensation
-- **Identity Resolution**: Universal ID stitching (deterministic + probabilistic)
-- **Feature Service**: Click-based engagement curve computation
-- **Event Store**: ClickHouse for email events, identity graph, explanations
-- **Feature Store**: Redis for cached features and decisions
-- **Connectors** (C#): OAuth + backfill + webhooks for ESPs (future)
-
-## Identity Resolution
-
-Per **LLM-spec.md §7**, all timing decisions reference a **Universal SendFlowr ID**.
-
-### Deterministic Keys (highest priority)
-- Email (hashed with SHA-256)
-- Phone number (normalized to E.164)
-
-### Probabilistic Keys (graph traversal)
-- Klaviyo ID, Shopify customer ID, ESP user IDs, IP/device signatures
-
-### Example: Timing Decision with Identity Resolution
+## Example API Call
 
 ```bash
 curl -X POST http://localhost:8001/timing-decision \
@@ -71,7 +48,7 @@ curl -X POST http://localhost:8001/timing-decision \
   }'
 ```
 
-**Response:**
+Sample response:
 ```json
 {
   "universal_id": "sf_b8783dbfc0024695",
@@ -80,44 +57,19 @@ curl -X POST http://localhost:8001/timing-decision \
 }
 ```
 
-See **[docs/IDENTITY-RESOLUTION.md](docs/IDENTITY-RESOLUTION.md)** for full documentation.
+## Project Structure
 
-## Current Status
+- `src/SendFlowr.Inference/` – Python API (FastAPI)
+- `src/SendFlowr.Connectors/` – C# connectors (just for fun)
+- `schemas/` – SQL and JSON schemas
+- `scripts/` – Helper scripts
 
-### ✅ Phase 1-5: Core Timing Layer (COMPLETE)
-- [x] Minute-level resolution (10,080 slots)
-- [x] Click-based engagement curves
-- [x] Latency-aware trigger computation
-- [x] Confidence scoring (entropy-based)
-- [x] Spec compliance 
+## Docs
 
-### ✅ Phase 6: Identity Resolution (COMPLETE)
-- [x] Universal SendFlowr ID generation
-- [x] Deterministic matching (email hash, phone)
-- [x] Probabilistic matching (ESP IDs, customer IDs)
-- [x] Identity graph with audit trail
-- [x] Idempotent merges
+- [docs/IDENTITY-RESOLUTION.md](docs/IDENTITY-RESOLUTION.md) – Identity resolution notes
+- [LLM-Ref/SendFlowr-Overview.md](LLM-Ref/SendFlowr-Overview.md) – Architecture overview
+- [docs/TESTING.md](docs/TESTING.md) – Testing notes
 
-### ⚠️ Phase 6-8: Advanced Features (PARTIAL)
-- [x] Hot path logic implemented
-- [x] Circuit breaker logic implemented
-- [ ] Real-time webhook integration (Shopify, Zendesk, etc.)
-- [ ] Dynamic latency tracking per ESP
-- [ ] Explainability UI/dashboard
+## Status
 
-## Documentation
-
-- **[LLM-Ref/LLM-spec.md](LLM-Ref/LLM-spec.md)** - Canonical specification
-- **[LLM-Ref/SendFlowr-Overview.md](LLM-Ref/SendFlowr-Overview.md)** - Architecture overview
-- **[docs/IDENTITY-RESOLUTION.md](docs/IDENTITY-RESOLUTION.md)** - Identity resolution guide
-- **[docs/TESTING.md](docs/TESTING.md)** - Testing guide
-- **[REFACTORING-SUMMARY.md](REFACTORING-SUMMARY.md)** - Recent changes
-
-## Spec Compliance
-
-✅ **100% LLM-Ref compliant**  
-✅ **§2**: 10,080 minute slots, continuous curves  
-✅ **§3**: TimingDecision contract with latency compensation  
-✅ **§6**: Probabilistic P(t) distributions from clicks  
-✅ **§7**: Universal Identity Resolution with audit trail  
-✅ **§8**: SendFlowr owns timing logic and identity (headless architecture)
+This is a work in progress, not production-ready, and probably full of rough edges. If you want to poke around or have ideas, feel free!
